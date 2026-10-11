@@ -25,6 +25,10 @@
 
 - Android: 7.0 - 13.0
 
+## 从源码构建
+
+需要 JDK 17 及以上。命令行请确保 `JAVA_HOME` 指向 JDK 17，或已在全局 `~/.gradle/gradle.properties` 中配置 `org.gradle.java.home`；IDEA 用户在 Settings → Build Tools → Gradle → Gradle JVM 中选择 17 即可。
+
 ## 功能特点
 
 - 支持6种图片混淆方法包括：小番茄图片混淆、块混淆、行像素混淆、逐像素混淆、兼容PicEncrypt行模式和兼容PicEncrypt行+列模式的混淆方法。
