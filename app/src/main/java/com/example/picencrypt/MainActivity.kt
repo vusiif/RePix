@@ -412,7 +412,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                 readOnly = true,
                 singleLine = true,
                 label = { Text(text = stringResource(id = R.string.select_algorithm)) },
-                colors = TextFieldDefaults.textFieldColors(
+                colors = TextFieldDefaults.colors(
                     disabledTextColor = Color.Transparent,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
@@ -463,7 +463,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                 imeAction = ImeAction.Done
             ),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-            colors = TextFieldDefaults.textFieldColors(
+            colors = TextFieldDefaults.colors(
                 disabledTextColor = Color.Transparent,
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
