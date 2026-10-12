@@ -20,3 +20,7 @@ local.properties
 # 系统杂物
 .DS_Store
 *.log
+
+# Markdown 一律不入库（README 除外；文档等出第一版 release 时再写）
+*.md
+!README.md
