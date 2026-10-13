@@ -1,4 +1,4 @@
-package com.example.picencrypt
+﻿package com.example.picencrypt
 
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -94,6 +94,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.picencrypt.ui.theme.PicEncryptTheme
+import com.example.picencrypt.utils.NativeImageScramble
 import com.example.picencrypt.utils.BlockScramble
 import com.example.picencrypt.utils.ImageScramble.Image
 import com.example.picencrypt.utils.ImageScramble.ProcessType
@@ -207,14 +208,28 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
         fun process(algorithm: Algorithm, processType: ProcessType, key: String = "0.666") {
             val pixels = IntArray(bitmap.width * bitmap.height)
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-            var image = Image(pixels, bitmap.width, bitmap.height)
-            image = when (algorithm) {
-                Algorithm.TOMATO -> TomatoScramble(image, key.toDouble()).process(processType)
-                Algorithm.BLOCK -> BlockScramble(image, key).process(processType)
-                Algorithm.ROW_PIXEL -> RowPixelScramble(image, key).process(processType)
-                Algorithm.PER_PIXEL -> PerPixelScramble(image, key).process(processType)
-                Algorithm.PIC_ENCRYPT_ROW -> PicEncryptRowScramble(image, key.toDouble()).process(processType)
-                else -> PicEncryptRowColumnScramble(image, key.toDouble()).process(processType)
+            val algoCode = when (algorithm) {
+                Algorithm.TOMATO -> 0
+                Algorithm.BLOCK -> 1
+                Algorithm.ROW_PIXEL -> 2
+                Algorithm.PER_PIXEL -> 3
+                Algorithm.PIC_ENCRYPT_ROW -> 4
+                Algorithm.PIC_ENCRYPT_ROW_AND_COLUMN -> 5
+            }
+            var image: Image? = null
+            if (NativeImageScramble.isAvailable()) {
+                image = NativeImageScramble.process(pixels, bitmap.width, bitmap.height, algoCode, processType, key)
+            }
+            if (image == null) {
+                val fallbackImage = Image(pixels, bitmap.width, bitmap.height)
+                image = when (algorithm) {
+                    Algorithm.TOMATO -> TomatoScramble(fallbackImage, key.toDouble()).process(processType)
+                    Algorithm.BLOCK -> BlockScramble(fallbackImage, key).process(processType)
+                    Algorithm.ROW_PIXEL -> RowPixelScramble(fallbackImage, key).process(processType)
+                    Algorithm.PER_PIXEL -> PerPixelScramble(fallbackImage, key).process(processType)
+                    Algorithm.PIC_ENCRYPT_ROW -> PicEncryptRowScramble(fallbackImage, key.toDouble()).process(processType)
+                    else -> PicEncryptRowColumnScramble(fallbackImage, key.toDouble()).process(processType)
+                }
             }
             bitmap = Bitmap.createBitmap(image.pixels, image.width, image.height, Bitmap.Config.ARGB_8888)
             thumbnail = loadThumbnail()
