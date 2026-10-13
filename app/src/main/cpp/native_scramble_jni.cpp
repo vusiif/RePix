@@ -3,6 +3,7 @@
 #include <android/log.h>
 #include <string>
 #include <vector>
+#include <cstring>
 
 #include "scramble_common.h"
 #include "tomato_scramble.h"
@@ -10,6 +11,7 @@
 #include "row_pixel_scramble.h"
 #include "per_pixel_scramble.h"
 #include "pic_encrypt_scramble.h"
+#include "ScrambleEngine.hpp"
 
 #define LOG_TAG "NativeScramble"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -89,8 +91,6 @@ Java_com_example_picencrypt_utils_NativeImageScramble_nativeProcessPixels(
     env->SetIntArrayRegion(out_array, 0, static_cast<jsize>(result.pixels.size()),
                            reinterpret_cast<const jint*>(result.pixels.data()));
 
-    // Construct Image(pixels, width, height)
-    // Find class com/example/picencrypt/utils/ImageScramble$Image
     jclass image_cls = env->FindClass("com/example/picencrypt/utils/ImageScramble$Image");
     if (!image_cls) return nullptr;
 
@@ -150,6 +150,39 @@ Java_com_example_picencrypt_utils_NativeImageScramble_nativeProcessBitmap(
 
     AndroidBitmap_unlockPixels(env, j_bitmap);
     return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+// ---------------- NativeShuffleBridge Zero-Copy API ----------------
+
+JNIEXPORT void JNICALL
+Java_com_example_picencrypt_utils_NativeShuffleBridge_scrambleBitmap(
+    JNIEnv* env,
+    jclass /* clazz */,
+    jobject j_bitmap,
+    jlong seed,
+    jboolean is_decrypt
+) {
+    if (!j_bitmap) return;
+
+    AndroidBitmapInfo info;
+    void* raw_pixels = nullptr;
+
+    // 1. Get Bitmap structure info
+    if (AndroidBitmap_getInfo(env, j_bitmap, &info) < 0) return;
+
+    // Must be RGBA_8888
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) return;
+
+    // 2. Lock underlying pixel memory (True zero-copy)
+    if (AndroidBitmap_lockPixels(env, j_bitmap, &raw_pixels) < 0 || !raw_pixels) return;
+
+    int32_t total_pixels = static_cast<int32_t>(info.width * info.height);
+
+    // 3. Perform in-place LCG Fisher-Yates shuffle / unshuffle
+    processShuffleInPlace(reinterpret_cast<int32_t*>(raw_pixels), total_pixels, seed, is_decrypt == JNI_TRUE);
+
+    // 4. Unlock memory, changes are immediately reflected
+    AndroidBitmap_unlockPixels(env, j_bitmap);
 }
 
 } // extern "C"

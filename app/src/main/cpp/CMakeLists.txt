@@ -13,13 +13,16 @@ add_library(repix_native SHARED
     row_pixel_scramble.cpp
     per_pixel_scramble.cpp
     pic_encrypt_scramble.cpp
+    ScrambleEngine.cpp
     native_scramble_jni.cpp
 )
 
 find_library(log-lib log)
 find_library(jnigraphics-lib jnigraphics)
+find_library(android-lib android)
 
 target_link_libraries(repix_native
     ${log-lib}
     ${jnigraphics-lib}
+    ${android-lib}
 )
