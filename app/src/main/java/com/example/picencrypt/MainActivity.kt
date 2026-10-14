@@ -69,6 +69,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -513,9 +518,20 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
     var isDropdownMenuExpanded by remember { mutableStateOf(false) }
     var isShowRequestWritePermissionDialog by remember { mutableStateOf(false) }
     var isCompatMode by remember { mutableStateOf(false) }
-    var isShowStegoDialog by remember { mutableStateOf(false) }
-    var isShowMirageDialog by remember { mutableStateOf(false) }
     var currentTab by remember { mutableStateOf(0) }
+
+    // Tab 1 (图种隐写) 独立页面状态
+    var stegoMode by remember { mutableStateOf(0) }
+    var stegoCoverUri by remember { mutableStateOf<Uri?>(null) }
+    var stegoArchiveUri by remember { mutableStateOf<Uri?>(null) }
+    var stegoExtractTargetUri by remember { mutableStateOf<Uri?>(null) }
+    var isStegoProcessing by remember { mutableStateOf(false) }
+
+    // Tab 2 (幻影坦克) 独立页面状态
+    var mirageIsColoredMode by remember { mutableStateOf(true) }
+    var mirageCoverUri by remember { mutableStateOf<Uri?>(null) }
+    var mirageHiddenUri by remember { mutableStateOf<Uri?>(null) }
+    var isMirageProcessing by remember { mutableStateOf(false) }
 
     // Select and add new images.
     val launcher = rememberLauncherForActivityResult(
@@ -561,6 +577,30 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                 }
             }
         }
+    )
+
+    // Tab 1: 图种 Launcher
+    val stegoCoverLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+        onResult = { result -> result.data?.data?.let { stegoCoverUri = it } }
+    )
+    val stegoArchiveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+        onResult = { result -> result.data?.data?.let { stegoArchiveUri = it } }
+    )
+    val stegoExtractLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+        onResult = { result -> result.data?.data?.let { stegoExtractTargetUri = it } }
+    )
+
+    // Tab 2: 幻影坦克 Launcher
+    val mirageCoverLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+        onResult = { result -> result.data?.data?.let { mirageCoverUri = it } }
+    )
+    val mirageHiddenLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+        onResult = { result -> result.data?.data?.let { mirageHiddenUri = it } }
     )
 
     // Show controls for algorithm selection and password input.
@@ -675,6 +715,46 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.background,
         ) {
             Scaffold(
+                bottomBar = {
+                    NavigationBar {
+                        NavigationBarItem(
+                            selected = currentTab == 0,
+                            onClick = { currentTab = 0 },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_launcher_background),
+                                    contentDescription = stringResource(id = R.string.tab_encrypt),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            label = { Text(text = stringResource(id = R.string.tab_encrypt)) }
+                        )
+                        NavigationBarItem(
+                            selected = currentTab == 1,
+                            onClick = { currentTab = 1 },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.import_download_icon_176152),
+                                    contentDescription = stringResource(id = R.string.tab_stego),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            label = { Text(text = stringResource(id = R.string.tab_stego)) }
+                        )
+                        NavigationBarItem(
+                            selected = currentTab == 2,
+                            onClick = { currentTab = 2 },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.crop_rotate_119243),
+                                    contentDescription = stringResource(id = R.string.tab_mirage),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            },
+                            label = { Text(text = stringResource(id = R.string.tab_mirage)) }
+                        )
+                    }
+                },
                 topBar = {
                     TopAppBar(
                         title = { Text(text = stringResource(id = R.string.app_name)) },
@@ -753,62 +833,305 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                     ) {
                         Spacer(modifier = Modifier.height((if (update) 90 else 90).dp))
 
-                        // Three-Module Navigation Bar (图片混淆 / 图种隐写 / 幻影坦克)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .padding(4.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            val tabs = listOf(
-                                stringResource(id = R.string.tab_encrypt),
-                                stringResource(id = R.string.tab_stego),
-                                stringResource(id = R.string.tab_mirage)
-                            )
-                            tabs.forEachIndexed { index, tabTitle ->
-                                val isSelected = currentTab == index
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                        .clickable {
-                                            currentTab = index
-                                            if (index == 1) isShowStegoDialog = true
-                                            if (index == 2) isShowMirageDialog = true
-                                        }
-                                        .padding(vertical = 10.dp),
-                                    contentAlignment = Alignment.Center
+                        if (currentTab == 0) {
+                            // ==================== Tab 0: 图片混淆与解混淆 ====================
+                            Button(
+                                onClick = {
+                                    launcher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                                        type = "image/*"
+                                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                                    })
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth(0.85f)
+                                    .padding(vertical = 6.dp)
+                            ) {
+                                Text(text = stringResource(id = R.string.select_image_btn))
+                            }
+                        } else if (currentTab == 1) {
+                            // ==================== Tab 1: 图种隐写独立功能页面 ====================
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.92f)
+                                    .padding(vertical = 8.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        text = tabTitle,
-                                        fontSize = 14.sp,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        text = stringResource(id = R.string.stego_tool_title),
+                                        style = MaterialTheme.typography.titleLarge
                                     )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        Button(
+                                            onClick = { stegoMode = 0 },
+                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                containerColor = if (stegoMode == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                contentColor = if (stegoMode == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            modifier = Modifier.weight(1f).padding(end = 4.dp)
+                                        ) {
+                                            Text(text = stringResource(id = R.string.stego_create_mode), fontSize = 13.sp)
+                                        }
+                                        Button(
+                                            onClick = { stegoMode = 1 },
+                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                containerColor = if (stegoMode == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                contentColor = if (stegoMode == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            modifier = Modifier.weight(1f).padding(start = 4.dp)
+                                        ) {
+                                            Text(text = stringResource(id = R.string.stego_extract_mode), fontSize = 13.sp)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(20.dp))
+
+                                    if (stegoMode == 0) {
+                                        Button(
+                                            onClick = {
+                                                stegoCoverLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" })
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(text = stringResource(id = R.string.stego_select_cover))
+                                        }
+                                        Text(
+                                            text = stegoCoverUri?.let { getUriFilename(context, it) } ?: "未选择封面",
+                                            fontSize = 12.sp,
+                                            color = if (stegoCoverUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        Button(
+                                            onClick = {
+                                                stegoArchiveLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply { type = "*/*" })
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(text = stringResource(id = R.string.stego_select_archive))
+                                        }
+                                        Text(
+                                            text = stegoArchiveUri?.let { getUriFilename(context, it) } ?: "未选择压缩包",
+                                            fontSize = 12.sp,
+                                            color = if (stegoArchiveUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.height(24.dp))
+
+                                        Button(
+                                            onClick = {
+                                                val cUri = stegoCoverUri
+                                                val aUri = stegoArchiveUri
+                                                if (cUri != null && aUri != null) {
+                                                    isStegoProcessing = true
+                                                    thread {
+                                                        val ok = saveStegoImage(context, cUri, aUri)
+                                                        Looper.prepare()
+                                                        Toast.makeText(
+                                                            context,
+                                                            if (ok) context.getString(R.string.stego_create_success) else context.getString(R.string.stego_failed),
+                                                            Toast.LENGTH_LONG
+                                                        ).show()
+                                                        isStegoProcessing = false
+                                                        Looper.loop()
+                                                    }
+                                                }
+                                            },
+                                            enabled = stegoCoverUri != null && stegoArchiveUri != null && !isStegoProcessing,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(text = if (isStegoProcessing) "正在合成..." else stringResource(id = R.string.stego_btn_create))
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = {
+                                                stegoExtractLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply { type = "*/*" })
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(text = stringResource(id = R.string.stego_select_target))
+                                        }
+                                        Text(
+                                            text = stegoExtractTargetUri?.let { getUriFilename(context, it) } ?: "未选择图种文件",
+                                            fontSize = 12.sp,
+                                            color = if (stegoExtractTargetUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.height(24.dp))
+
+                                        Button(
+                                            onClick = {
+                                                val tUri = stegoExtractTargetUri
+                                                if (tUri != null) {
+                                                    isStegoProcessing = true
+                                                    thread {
+                                                        val fileName = extractArchiveFromStego(context, tUri)
+                                                        Looper.prepare()
+                                                        val msg = if (fileName != null) {
+                                                            context.getString(R.string.stego_extract_success) + " (" + fileName + ")"
+                                                        } else {
+                                                            context.getString(R.string.stego_no_archive_found)
+                                                        }
+                                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                                        isStegoProcessing = false
+                                                        Looper.loop()
+                                                    }
+                                                }
+                                            },
+                                            enabled = stegoExtractTargetUri != null && !isStegoProcessing,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(text = if (isStegoProcessing) "正在提取..." else stringResource(id = R.string.stego_btn_extract))
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (currentTab == 2) {
+                            // ==================== Tab 2: 幻影坦克独立功能页面 ====================
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.92f)
+                                    .padding(vertical = 8.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = stringResource(id = R.string.mirage_tool_title),
+                                        style = MaterialTheme.typography.titleLarge
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        Button(
+                                            onClick = { mirageIsColoredMode = true },
+                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                containerColor = if (mirageIsColoredMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                contentColor = if (mirageIsColoredMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            modifier = Modifier.weight(1f).padding(end = 4.dp)
+                                        ) {
+                                            Text(text = stringResource(id = R.string.mirage_colored_mode), fontSize = 13.sp)
+                                        }
+                                        Button(
+                                            onClick = { mirageIsColoredMode = false },
+                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                containerColor = if (!mirageIsColoredMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                contentColor = if (!mirageIsColoredMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            modifier = Modifier.weight(1f).padding(start = 4.dp)
+                                        ) {
+                                            Text(text = stringResource(id = R.string.mirage_gray_mode), fontSize = 13.sp)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(20.dp))
+
+                                    Button(
+                                        onClick = {
+                                            mirageCoverLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" })
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(text = stringResource(id = R.string.mirage_select_cover))
+                                    }
+                                    Text(
+                                        text = mirageCoverUri?.let { getUriFilename(context, it) } ?: "未选择表图",
+                                        fontSize = 12.sp,
+                                        color = if (mirageCoverUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Button(
+                                        onClick = {
+                                            mirageHiddenLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" })
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(text = stringResource(id = R.string.mirage_select_hidden))
+                                    }
+                                    Text(
+                                        text = mirageHiddenUri?.let { getUriFilename(context, it) } ?: "未选择里图",
+                                        fontSize = 12.sp,
+                                        color = if (mirageHiddenUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.height(24.dp))
+
+                                    Button(
+                                        onClick = {
+                                            val cUri = mirageCoverUri
+                                            val hUri = mirageHiddenUri
+                                            if (cUri != null && hUri != null) {
+                                                isMirageProcessing = true
+                                                thread {
+                                                    try {
+                                                        val coverStream = context.contentResolver.openInputStream(cUri)
+                                                        val hiddenStream = context.contentResolver.openInputStream(hUri)
+                                                        val coverBmp = BitmapFactory.decodeStream(coverStream)
+                                                        val hiddenBmp = BitmapFactory.decodeStream(hiddenStream)
+                                                        coverStream?.close()
+                                                        hiddenStream?.close()
+
+                                                        if (coverBmp != null && hiddenBmp != null) {
+                                                            val (saved, _) = MirageTankBridge.createAndSaveMirageTank(
+                                                                context,
+                                                                coverBmp,
+                                                                hiddenBmp,
+                                                                isColored = mirageIsColoredMode
+                                                            )
+                                                            Looper.prepare()
+                                                            Toast.makeText(
+                                                                context,
+                                                                if (saved) context.getString(R.string.mirage_success) else context.getString(R.string.mirage_failed),
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
+                                                            isMirageProcessing = false
+                                                            Looper.loop()
+                                                        } else {
+                                                            Looper.prepare()
+                                                            Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
+                                                            isMirageProcessing = false
+                                                            Looper.loop()
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        e.printStackTrace()
+                                                        Looper.prepare()
+                                                        Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
+                                                        isMirageProcessing = false
+                                                        Looper.loop()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        enabled = mirageCoverUri != null && mirageHiddenUri != null && !isMirageProcessing,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(text = if (isMirageProcessing) "正在生成..." else stringResource(id = R.string.mirage_btn_generate))
+                                    }
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Module 1 Primary Action (Add images for obfuscation)
-                        Button(
-                            onClick = {
-                                launcher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
-                                    type = "image/*"
-                                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                                })
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth(0.85f)
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Text(text = stringResource(id = R.string.select_image_btn))
-                        }
-
-                        if (images.size > 0) {
+                        if (currentTab == 0 && images.size > 0) {
                             val isEnableExpanded = !isShowMethodAndKeySettingOnTopLayer
                             SetMethodAndKey(isEnableExpanded)
 
@@ -1387,7 +1710,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                         }
                     }
 
-                    if (images.size > 0) {
+                    if (currentTab == 0 && images.size > 0) {
                         // Buttons pinned to the bottom right conner of the screen.
                         Column(
                             horizontalAlignment = Alignment.End,
@@ -1490,365 +1813,6 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                 }
                             }
                         }
-                    }
-
-                    // Stego (File Steganography) Dialog
-                    if (isShowStegoDialog) {
-                        var stegoMode by remember { mutableStateOf(0) }
-                        var coverUri by remember { mutableStateOf<Uri?>(null) }
-                        var archiveUri by remember { mutableStateOf<Uri?>(null) }
-                        var extractTargetUri by remember { mutableStateOf<Uri?>(null) }
-                        var isStegoProcessing by remember { mutableStateOf(false) }
-
-                        val coverLauncher = rememberLauncherForActivityResult(
-                            contract = ActivityResultContracts.StartActivityForResult(),
-                            onResult = { result ->
-                                result.data?.data?.let { coverUri = it }
-                            }
-                        )
-                        val archiveLauncher = rememberLauncherForActivityResult(
-                            contract = ActivityResultContracts.StartActivityForResult(),
-                            onResult = { result ->
-                                result.data?.data?.let { archiveUri = it }
-                            }
-                        )
-                        val extractTargetLauncher = rememberLauncherForActivityResult(
-                            contract = ActivityResultContracts.StartActivityForResult(),
-                            onResult = { result ->
-                                result.data?.data?.let { extractTargetUri = it }
-                            }
-                        )
-
-                        AlertDialog(
-                            onDismissRequest = { if (!isStegoProcessing) isShowStegoDialog = false },
-                            title = {
-                                Text(
-                                    text = stringResource(id = R.string.stego_tool_title),
-                                    style = MaterialTheme.typography.titleLarge
-                                )
-                            },
-                            text = {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .verticalScroll(rememberScrollState()),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceEvenly
-                                    ) {
-                                        Button(
-                                            onClick = { stegoMode = 0 },
-                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                                containerColor = if (stegoMode == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                                contentColor = if (stegoMode == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                            ),
-                                            modifier = Modifier.weight(1f).padding(end = 4.dp)
-                                        ) {
-                                            Text(text = stringResource(id = R.string.stego_create_mode), fontSize = 12.sp)
-                                        }
-                                        Button(
-                                            onClick = { stegoMode = 1 },
-                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                                containerColor = if (stegoMode == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                                contentColor = if (stegoMode == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                            ),
-                                            modifier = Modifier.weight(1f).padding(start = 4.dp)
-                                        ) {
-                                            Text(text = stringResource(id = R.string.stego_extract_mode), fontSize = 12.sp)
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    if (stegoMode == 0) {
-                                        Button(
-                                            onClick = {
-                                                coverLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
-                                                    type = "image/*"
-                                                })
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(text = stringResource(id = R.string.stego_select_cover))
-                                        }
-                                        Text(
-                                            text = coverUri?.let { getUriFilename(context, it) } ?: "未选择封面",
-                                            fontSize = 12.sp,
-                                            color = if (coverUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.padding(vertical = 4.dp)
-                                        )
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        Button(
-                                            onClick = {
-                                                archiveLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
-                                                    type = "*/*"
-                                                })
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(text = stringResource(id = R.string.stego_select_archive))
-                                        }
-                                        Text(
-                                            text = archiveUri?.let { getUriFilename(context, it) } ?: "未选择压缩包",
-                                            fontSize = 12.sp,
-                                            color = if (archiveUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.padding(vertical = 4.dp)
-                                        )
-
-                                        Spacer(modifier = Modifier.height(16.dp))
-
-                                        Button(
-                                            onClick = {
-                                                val cUri = coverUri
-                                                val aUri = archiveUri
-                                                if (cUri != null && aUri != null) {
-                                                    isStegoProcessing = true
-                                                    thread {
-                                                        val ok = saveStegoImage(context, cUri, aUri)
-                                                        Looper.prepare()
-                                                        Toast.makeText(
-                                                            context,
-                                                            if (ok) context.getString(R.string.stego_create_success) else context.getString(R.string.stego_failed),
-                                                            Toast.LENGTH_LONG
-                                                        ).show()
-                                                        isStegoProcessing = false
-                                                        if (ok) isShowStegoDialog = false
-                                                        Looper.loop()
-                                                    }
-                                                }
-                                            },
-                                            enabled = coverUri != null && archiveUri != null && !isStegoProcessing,
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(text = if (isStegoProcessing) "正在合成..." else stringResource(id = R.string.stego_btn_create))
-                                        }
-                                    } else {
-                                        Button(
-                                            onClick = {
-                                                extractTargetLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
-                                                    type = "*/*"
-                                                })
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(text = stringResource(id = R.string.stego_select_target))
-                                        }
-                                        Text(
-                                            text = extractTargetUri?.let { getUriFilename(context, it) } ?: "未选择图种文件",
-                                            fontSize = 12.sp,
-                                            color = if (extractTargetUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.padding(vertical = 4.dp)
-                                        )
-
-                                        Spacer(modifier = Modifier.height(16.dp))
-
-                                        Button(
-                                            onClick = {
-                                                val tUri = extractTargetUri
-                                                if (tUri != null) {
-                                                    isStegoProcessing = true
-                                                    thread {
-                                                        val fileName = extractArchiveFromStego(context, tUri)
-                                                        Looper.prepare()
-                                                        val msg = if (fileName != null) {
-                                                            context.getString(R.string.stego_extract_success) + " (" + fileName + ")"
-                                                        } else {
-                                                            context.getString(R.string.stego_no_archive_found)
-                                                        }
-                                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                                                        isStegoProcessing = false
-                                                        if (fileName != null) isShowStegoDialog = false
-                                                        Looper.loop()
-                                                    }
-                                                }
-                                            },
-                                            enabled = extractTargetUri != null && !isStegoProcessing,
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text(text = if (isStegoProcessing) "正在提取..." else stringResource(id = R.string.stego_btn_extract))
-                                        }
-                                    }
-                                }
-                            },
-                            confirmButton = {
-                                Button(
-                                    onClick = { isShowStegoDialog = false },
-                                    enabled = !isStegoProcessing
-                                ) {
-                                    Text("关闭")
-                                }
-                            }
-                        )
-                    }
-
-                    // Mirage Tank (Prism Tank) Dialog
-                    if (isShowMirageDialog) {
-                        var isColoredMode by remember { mutableStateOf(true) }
-                        var coverUri by remember { mutableStateOf<Uri?>(null) }
-                        var hiddenUri by remember { mutableStateOf<Uri?>(null) }
-                        var isMirageProcessing by remember { mutableStateOf(false) }
-
-                        val mirageCoverLauncher = rememberLauncherForActivityResult(
-                            contract = ActivityResultContracts.StartActivityForResult(),
-                            onResult = { result ->
-                                result.data?.data?.let { coverUri = it }
-                            }
-                        )
-                        val mirageHiddenLauncher = rememberLauncherForActivityResult(
-                            contract = ActivityResultContracts.StartActivityForResult(),
-                            onResult = { result ->
-                                result.data?.data?.let { hiddenUri = it }
-                            }
-                        )
-
-                        AlertDialog(
-                            onDismissRequest = { if (!isMirageProcessing) isShowMirageDialog = false },
-                            title = {
-                                Text(
-                                    text = stringResource(id = R.string.mirage_tool_title),
-                                    style = MaterialTheme.typography.titleLarge
-                                )
-                            },
-                            text = {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .verticalScroll(rememberScrollState()),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceEvenly
-                                    ) {
-                                        Button(
-                                            onClick = { isColoredMode = true },
-                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                                containerColor = if (isColoredMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                                contentColor = if (isColoredMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                            ),
-                                            modifier = Modifier.weight(1f).padding(end = 4.dp)
-                                        ) {
-                                            Text(text = stringResource(id = R.string.mirage_colored_mode), fontSize = 12.sp)
-                                        }
-                                        Button(
-                                            onClick = { isColoredMode = false },
-                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                                containerColor = if (!isColoredMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                                contentColor = if (!isColoredMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                            ),
-                                            modifier = Modifier.weight(1f).padding(start = 4.dp)
-                                        ) {
-                                            Text(text = stringResource(id = R.string.mirage_gray_mode), fontSize = 12.sp)
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    Button(
-                                        onClick = {
-                                            mirageCoverLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
-                                                type = "image/*"
-                                            })
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(text = stringResource(id = R.string.mirage_select_cover))
-                                    }
-                                    Text(
-                                        text = coverUri?.let { getUriFilename(context, it) } ?: "未选择表图",
-                                        fontSize = 12.sp,
-                                        color = if (coverUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.padding(vertical = 4.dp)
-                                    )
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Button(
-                                        onClick = {
-                                            mirageHiddenLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
-                                                type = "image/*"
-                                            })
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(text = stringResource(id = R.string.mirage_select_hidden))
-                                    }
-                                    Text(
-                                        text = hiddenUri?.let { getUriFilename(context, it) } ?: "未选择里图",
-                                        fontSize = 12.sp,
-                                        color = if (hiddenUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.padding(vertical = 4.dp)
-                                    )
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    Button(
-                                        onClick = {
-                                            val cUri = coverUri
-                                            val hUri = hiddenUri
-                                            if (cUri != null && hUri != null) {
-                                                isMirageProcessing = true
-                                                thread {
-                                                    try {
-                                                        val coverStream = context.contentResolver.openInputStream(cUri)
-                                                        val hiddenStream = context.contentResolver.openInputStream(hUri)
-                                                        val coverBmp = BitmapFactory.decodeStream(coverStream)
-                                                        val hiddenBmp = BitmapFactory.decodeStream(hiddenStream)
-                                                        coverStream?.close()
-                                                        hiddenStream?.close()
-
-                                                        if (coverBmp != null && hiddenBmp != null) {
-                                                            val (saved, _) = MirageTankBridge.createAndSaveMirageTank(
-                                                                context,
-                                                                coverBmp,
-                                                                hiddenBmp,
-                                                                isColored = isColoredMode
-                                                            )
-                                                            Looper.prepare()
-                                                            Toast.makeText(
-                                                                context,
-                                                                if (saved) context.getString(R.string.mirage_success) else context.getString(R.string.mirage_failed),
-                                                                Toast.LENGTH_LONG
-                                                            ).show()
-                                                            isMirageProcessing = false
-                                                            if (saved) isShowMirageDialog = false
-                                                            Looper.loop()
-                                                        } else {
-                                                            Looper.prepare()
-                                                            Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
-                                                            isMirageProcessing = false
-                                                            Looper.loop()
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        e.printStackTrace()
-                                                        Looper.prepare()
-                                                        Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
-                                                        isMirageProcessing = false
-                                                        Looper.loop()
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        enabled = coverUri != null && hiddenUri != null && !isMirageProcessing,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(text = if (isMirageProcessing) "正在生成..." else stringResource(id = R.string.mirage_btn_generate))
-                                    }
-                                }
-                            },
-                            confirmButton = {
-                                Button(
-                                    onClick = { isShowMirageDialog = false },
-                                    enabled = !isMirageProcessing
-                                ) {
-                                    Text("关闭")
-                                }
-                            }
-                        )
                     }
 
                     // Show information about the App.
