@@ -113,6 +113,7 @@ import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 import com.example.picencrypt.utils.SteganographyHelper
+import com.example.picencrypt.utils.MirageTankBridge
 import java.util.Date
 import kotlin.concurrent.thread
 import kotlin.math.round
@@ -513,6 +514,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
     var isShowRequestWritePermissionDialog by remember { mutableStateOf(false) }
     var isCompatMode by remember { mutableStateOf(false) }
     var isShowStegoDialog by remember { mutableStateOf(false) }
+    var isShowMirageDialog by remember { mutableStateOf(false) }
 
     // Select and add new images.
     val launcher = rememberLauncherForActivityResult(
@@ -686,6 +688,15 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                         },
                         actions = {
                             Icon(
+                                painter = painterResource(id = R.drawable.crop_rotate_119243),
+                                contentDescription = stringResource(id = R.string.mirage_tool_title),
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp)
+                                    .clickable {
+                                        isShowMirageDialog = true
+                                    }
+                            )
+                            Icon(
                                 painter = painterResource(id = R.drawable.import_download_icon_176152),
                                 contentDescription = stringResource(id = R.string.stego_tool_title),
                                 modifier = Modifier
@@ -772,6 +783,13 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
                             ) {
                                 Text(text = stringResource(id = R.string.stego_tool_title))
+                            }
+
+                            Button(
+                                onClick = { isShowMirageDialog = true },
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
+                            ) {
+                                Text(text = stringResource(id = R.string.mirage_tool_title))
                             }
                         }
 
@@ -1609,6 +1627,172 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                 Button(
                                     onClick = { isShowStegoDialog = false },
                                     enabled = !isStegoProcessing
+                                ) {
+                                    Text("关闭")
+                                }
+                            }
+                        )
+                    }
+
+                    // Mirage Tank (Prism Tank) Dialog
+                    if (isShowMirageDialog) {
+                        var isColoredMode by remember { mutableStateOf(true) }
+                        var coverUri by remember { mutableStateOf<Uri?>(null) }
+                        var hiddenUri by remember { mutableStateOf<Uri?>(null) }
+                        var isMirageProcessing by remember { mutableStateOf(false) }
+
+                        val mirageCoverLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.StartActivityForResult(),
+                            onResult = { result ->
+                                result.data?.data?.let { coverUri = it }
+                            }
+                        )
+                        val mirageHiddenLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.StartActivityForResult(),
+                            onResult = { result ->
+                                result.data?.data?.let { hiddenUri = it }
+                            }
+                        )
+
+                        AlertDialog(
+                            onDismissRequest = { if (!isMirageProcessing) isShowMirageDialog = false },
+                            title = {
+                                Text(
+                                    text = stringResource(id = R.string.mirage_tool_title),
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState()),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        Button(
+                                            onClick = { isColoredMode = true },
+                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                containerColor = if (isColoredMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                                contentColor = if (isColoredMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            ),
+                                            modifier = Modifier.weight(1f).padding(end = 4.dp)
+                                        ) {
+                                            Text(text = stringResource(id = R.string.mirage_colored_mode), fontSize = 12.sp)
+                                        }
+                                        Button(
+                                            onClick = { isColoredMode = false },
+                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                containerColor = if (!isColoredMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                                contentColor = if (!isColoredMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            ),
+                                            modifier = Modifier.weight(1f).padding(start = 4.dp)
+                                        ) {
+                                            Text(text = stringResource(id = R.string.mirage_gray_mode), fontSize = 12.sp)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    Button(
+                                        onClick = {
+                                            mirageCoverLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                                                type = "image/*"
+                                            })
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(text = stringResource(id = R.string.mirage_select_cover))
+                                    }
+                                    Text(
+                                        text = coverUri?.let { getUriFilename(context, it) } ?: "未选择表图",
+                                        fontSize = 12.sp,
+                                        color = if (coverUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Button(
+                                        onClick = {
+                                            mirageHiddenLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                                                type = "image/*"
+                                            })
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(text = stringResource(id = R.string.mirage_select_hidden))
+                                    }
+                                    Text(
+                                        text = hiddenUri?.let { getUriFilename(context, it) } ?: "未选择里图",
+                                        fontSize = 12.sp,
+                                        color = if (hiddenUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    Button(
+                                        onClick = {
+                                            val cUri = coverUri
+                                            val hUri = hiddenUri
+                                            if (cUri != null && hUri != null) {
+                                                isMirageProcessing = true
+                                                thread {
+                                                    try {
+                                                        val coverStream = context.contentResolver.openInputStream(cUri)
+                                                        val hiddenStream = context.contentResolver.openInputStream(hUri)
+                                                        val coverBmp = BitmapFactory.decodeStream(coverStream)
+                                                        val hiddenBmp = BitmapFactory.decodeStream(hiddenStream)
+                                                        coverStream?.close()
+                                                        hiddenStream?.close()
+
+                                                        if (coverBmp != null && hiddenBmp != null) {
+                                                            val (saved, _) = MirageTankBridge.createAndSaveMirageTank(
+                                                                context,
+                                                                coverBmp,
+                                                                hiddenBmp,
+                                                                isColored = isColoredMode
+                                                            )
+                                                            Looper.prepare()
+                                                            Toast.makeText(
+                                                                context,
+                                                                if (saved) context.getString(R.string.mirage_success) else context.getString(R.string.mirage_failed),
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
+                                                            isMirageProcessing = false
+                                                            if (saved) isShowMirageDialog = false
+                                                            Looper.loop()
+                                                        } else {
+                                                            Looper.prepare()
+                                                            Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
+                                                            isMirageProcessing = false
+                                                            Looper.loop()
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        e.printStackTrace()
+                                                        Looper.prepare()
+                                                        Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
+                                                        isMirageProcessing = false
+                                                        Looper.loop()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        enabled = coverUri != null && hiddenUri != null && !isMirageProcessing,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(text = if (isMirageProcessing) "正在生成..." else stringResource(id = R.string.mirage_btn_generate))
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = { isShowMirageDialog = false },
+                                    enabled = !isMirageProcessing
                                 ) {
                                     Text("关闭")
                                 }

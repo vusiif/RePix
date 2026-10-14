@@ -1,22 +1,22 @@
 <resources>
-    <string name="app_name">图片混淆</string>
-    <string name="select_algorithm">选择混淆方法</string>
-    <string name="tomato_algorithm">🍅小番茄图片混淆</string>
-    <string name="block_algorithm">块混淆</string>
-    <string name="row_pixel_algorithm">行像素混淆</string>
-    <string name="per_pixel_algorithm">逐像素混淆</string>
-    <string name="pic_encrypt_row_pixel">兼容PicEncrypt: 行模式</string>
-    <string name="pic_encrypt_row_and_column_pixel">兼容PicEncrypt: 行+列模式</string>
+    <string name="app_name">PicEncrypt</string>
+    <string name="tomato_algorithm">番茄算法</string>
+    <string name="block_algorithm">分块算法</string>
+    <string name="row_pixel_algorithm">行像素打乱</string>
+    <string name="per_pixel_algorithm">全像素打乱</string>
+    <string name="pic_encrypt_row_pixel">PicEncrypt行打乱</string>
+    <string name="pic_encrypt_row_and_column_pixel">PicEncrypt行列打乱</string>
     <string name="lcg_shuffle_algorithm">⚡经典LCG全图洗牌 (零拷贝)</string>
+    <string name="select_algorithm">选择算法</string>
     <string name="key_text_field_label">密钥</string>
     <string name="select_image_btn">选择图片</string>
     <string name="encrypt_btn">混淆</string>
     <string name="decrypt_btn">解混淆</string>
-    <string name="reset_btn">还原</string>
+    <string name="reset_btn">重置</string>
     <string name="clear_btn">清空</string>
-    <string name="rotate180_btn">旋转180°</string>
-    <string name="save_btn">保存</string>
-    <string name="invalid_tomato_key_toast">小番茄算法仅支持0到1.618的小数作为密钥</string>
+    <string name="rotate180_btn">翻转180度</string>
+    <string name="save_btn">保存全部</string>
+    <string name="invalid_tomato_key_toast">番茄算法仅支持大于0且小于等于1.618的数字作为密钥</string>
     <string name="invalid_picencrypt_key_toast">PicEncrypt算法仅支持0到1(不含0和1)的小数作为密钥</string>
     <string name="succeeded_save_image_toast">成功保存图片到相册</string>
     <string name="failed_save_image_toast">保存图片失败</string>
@@ -47,4 +47,14 @@
     <string name="stego_extract_success">压缩包已成功提取至 下载目录 (Download/PicEncrypt)！</string>
     <string name="stego_no_archive_found">未在此图片中检测到隐藏的压缩包</string>
     <string name="stego_failed">操作失败，请检查文件或权限</string>
+
+    <!-- 幻影/光棱坦克工具文案 -->
+    <string name="mirage_tool_title">幻影坦克 (光棱坦克)</string>
+    <string name="mirage_colored_mode">光棱坦克 (全彩)</string>
+    <string name="mirage_gray_mode">经典幻影 (黑白)</string>
+    <string name="mirage_select_cover">1. 选择表图 (白色背景下显现)</string>
+    <string name="mirage_select_hidden">2. 选择里图 (黑色背景下显现)</string>
+    <string name="mirage_btn_generate">一键生成幻影坦克</string>
+    <string name="mirage_success">幻影坦克已成功保存至相册 (Pictures/PicEncrypt)！</string>
+    <string name="mirage_failed">生成失败，请确认图片有效</string>
 </resources>

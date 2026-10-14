@@ -15,6 +15,8 @@ add_library(repix_native SHARED
     pic_encrypt_scramble.cpp
     ScrambleEngine.cpp
     native_scramble_jni.cpp
+    MirageEngine.cpp
+    mirage_tank_jni.cpp
 )
 
 find_library(log-lib log)
