@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">PicEncrypt</string>
+    <string name="app_name">RePix 图像工具箱</string>
     <string name="tomato_algorithm">番茄算法</string>
     <string name="block_algorithm">分块算法</string>
     <string name="row_pixel_algorithm">行像素打乱</string>
@@ -8,8 +8,8 @@
     <string name="pic_encrypt_row_and_column_pixel">PicEncrypt行列打乱</string>
     <string name="lcg_shuffle_algorithm">⚡经典LCG全图洗牌 (零拷贝)</string>
     <string name="select_algorithm">选择算法</string>
-    <string name="key_text_field_label">密钥</string>
-    <string name="select_image_btn">选择图片</string>
+    <string name="key_text_field_label">密钥 / 密码种子</string>
+    <string name="select_image_btn">添加图片</string>
     <string name="encrypt_btn">混淆</string>
     <string name="decrypt_btn">解混淆</string>
     <string name="reset_btn">重置</string>
@@ -30,9 +30,15 @@
     <string name="image_loading_completed">图片加载完成</string>
     <string name="request_storage_permission_dialog_title">需要存储权限</string>
     <string name="request_storage_permission_dialog_text">请允许存储权限以保存图片到相册。</string>
-    <string name="compat_mode_label">Java 兼容模式</string>
+    <string name="compat_mode_label">Java 兼容兜底模式</string>
     <string name="fallback_to_compat_toast">C++ 引擎处理异常，已自动切换至 Java 兼容模式完成</string>
     <string name="process_failed_toast">处理失败，可尝试开启 Java 兼容模式重试</string>
+
+    <!-- 导航 Tab 文案 -->
+    <string name="tab_encrypt">图片混淆</string>
+    <string name="tab_stego">图种隐写</string>
+    <string name="tab_mirage">幻影坦克</string>
+    <string name="settings_title">参数与设置</string>
 
     <!-- 图种隐写工具文案 -->
     <string name="stego_tool_title">图种工具 (文件隐写)</string>

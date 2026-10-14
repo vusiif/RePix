@@ -515,6 +515,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
     var isCompatMode by remember { mutableStateOf(false) }
     var isShowStegoDialog by remember { mutableStateOf(false) }
     var isShowMirageDialog by remember { mutableStateOf(false) }
+    var currentTab by remember { mutableStateOf(0) }
 
     // Select and add new images.
     val launcher = rememberLauncherForActivityResult(
@@ -688,28 +689,19 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                         },
                         actions = {
                             Icon(
-                                painter = painterResource(id = R.drawable.crop_rotate_119243),
-                                contentDescription = stringResource(id = R.string.mirage_tool_title),
+                                imageVector = Icons.Rounded.Settings,
+                                contentDescription = stringResource(id = R.string.settings_title),
                                 modifier = Modifier
                                     .padding(horizontal = 8.dp)
                                     .clickable {
-                                        isShowMirageDialog = true
-                                    }
-                            )
-                            Icon(
-                                painter = painterResource(id = R.drawable.import_download_icon_176152),
-                                contentDescription = stringResource(id = R.string.stego_tool_title),
-                                modifier = Modifier
-                                    .padding(horizontal = 8.dp)
-                                    .clickable {
-                                        isShowStegoDialog = true
+                                        isShowMethodAndKeySettingOnTopLayer = true
                                     }
                             )
                             Icon(
                                 imageVector = Icons.Default.Info,
                                 contentDescription = null,
                                 modifier = Modifier
-                                    .padding(horizontal = 15.dp)
+                                    .padding(horizontal = 12.dp)
                                     .clickable {
                                         isShowInfo = !isShowInfo
                                     }
@@ -761,36 +753,59 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                     ) {
                         Spacer(modifier = Modifier.height((if (update) 90 else 90).dp))
 
-                        // Select new images & Stego tool.
+                        // Three-Module Navigation Bar (图片混淆 / 图种隐写 / 幻影坦克)
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            modifier = Modifier
+                                .fillMaxWidth(0.92f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
-                            Button(
-                                onClick = {
-                                    launcher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
-                                        type = "image/*"
-                                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                                    })
-                                },
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
-                            ) {
-                                Text(text = stringResource(id = R.string.select_image_btn))
+                            val tabs = listOf(
+                                stringResource(id = R.string.tab_encrypt),
+                                stringResource(id = R.string.tab_stego),
+                                stringResource(id = R.string.tab_mirage)
+                            )
+                            tabs.forEachIndexed { index, tabTitle ->
+                                val isSelected = currentTab == index
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                        .clickable {
+                                            currentTab = index
+                                            if (index == 1) isShowStegoDialog = true
+                                            if (index == 2) isShowMirageDialog = true
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = tabTitle,
+                                        fontSize = 14.sp,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
+                        }
 
-                            Button(
-                                onClick = { isShowStegoDialog = true },
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
-                            ) {
-                                Text(text = stringResource(id = R.string.stego_tool_title))
-                            }
+                        Spacer(modifier = Modifier.height(14.dp))
 
-                            Button(
-                                onClick = { isShowMirageDialog = true },
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
-                            ) {
-                                Text(text = stringResource(id = R.string.mirage_tool_title))
-                            }
+                        // Module 1 Primary Action (Add images for obfuscation)
+                        Button(
+                            onClick = {
+                                launcher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                                    type = "image/*"
+                                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                                })
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Text(text = stringResource(id = R.string.select_image_btn))
                         }
 
                         if (images.size > 0) {
@@ -1437,7 +1452,43 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                     isShowMethodAndKeySettingOnTopLayer = false
                                 }
                         ) {
-                            SetMethodAndKey()
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .fillMaxWidth(0.9f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .clickable(enabled = false) {}
+                                    .padding(20.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = stringResource(id = R.string.settings_title),
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .clickable { isShowMethodAndKeySettingOnTopLayer = false }
+                                            .padding(4.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                SetMethodAndKey()
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = { isShowMethodAndKeySettingOnTopLayer = false },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("完成")
+                                }
+                            }
                         }
                     }
 
