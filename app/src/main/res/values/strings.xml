@@ -7,6 +7,7 @@
     <string name="per_pixel_algorithm">Per Pixel</string>
     <string name="pic_encrypt_row_pixel">PicEncrypt: Row Pixel</string>
     <string name="pic_encrypt_row_and_column_pixel">PicEncrypt: Row+Column Pixel</string>
+    <string name="lcg_shuffle_algorithm">⚡LCG Full Shuffle (Zero-Copy)</string>
     <string name="key_text_field_label">Key</string>
     <string name="select_image_btn">Select Image</string>
     <string name="encrypt_btn">Encrypt</string>
@@ -29,4 +30,7 @@
     <string name="image_loading_completed">Image loading completed</string>
     <string name="request_storage_permission_dialog_title">Storage Permission is required</string>
     <string name="request_storage_permission_dialog_text">Please allow storage permission to save images to the gallery.</string>
+    <string name="compat_mode_label">Java Compatibility Mode</string>
+    <string name="fallback_to_compat_toast">Native processing failed, fell back to Java compatibility mode</string>
+    <string name="process_failed_toast">Processing failed</string>
 </resources>

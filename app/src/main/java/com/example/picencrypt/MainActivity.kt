@@ -1,4 +1,4 @@
-﻿package com.example.picencrypt
+package com.example.picencrypt
 
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -94,7 +94,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.picencrypt.ui.theme.PicEncryptTheme
+import androidx.compose.material3.Switch
 import com.example.picencrypt.utils.NativeImageScramble
+import com.example.picencrypt.utils.NativeShuffleBridge
 import com.example.picencrypt.utils.BlockScramble
 import com.example.picencrypt.utils.ImageScramble.Image
 import com.example.picencrypt.utils.ImageScramble.ProcessType
@@ -118,7 +120,8 @@ enum class Algorithm {
     ROW_PIXEL,
     PER_PIXEL,
     PIC_ENCRYPT_ROW,
-    PIC_ENCRYPT_ROW_AND_COLUMN
+    PIC_ENCRYPT_ROW_AND_COLUMN,
+    LCG_SHUFFLE
 }
 
 const val defaultTomatoKey = 1
@@ -205,7 +208,21 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
             return ThumbnailUtils.extractThumbnail(bitmap, (bitmap.width.toFloat() / ratio).toInt(), (bitmap.height.toFloat() / ratio).toInt())
         }
 
-        fun process(algorithm: Algorithm, processType: ProcessType, key: String = "0.666") {
+        fun process(
+            algorithm: Algorithm,
+            processType: ProcessType,
+            key: String = "0.666",
+            forceCompat: Boolean = false,
+            onFallback: (() -> Unit)? = null
+        ): Boolean {
+            // LCG_SHUFFLE: Direct Zero-Copy in-place processing on Bitmap
+            if (algorithm == Algorithm.LCG_SHUFFLE) {
+                val seed = NativeShuffleBridge.stringToSeed(key)
+                NativeShuffleBridge.scrambleBitmap(bitmap, seed, processType == ProcessType.DECRYPT)
+                thumbnail = loadThumbnail()
+                return true
+            }
+
             val pixels = IntArray(bitmap.width * bitmap.height)
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
             val algoCode = when (algorithm) {
@@ -215,24 +232,49 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                 Algorithm.PER_PIXEL -> 3
                 Algorithm.PIC_ENCRYPT_ROW -> 4
                 Algorithm.PIC_ENCRYPT_ROW_AND_COLUMN -> 5
+                else -> 0
             }
+
             var image: Image? = null
-            if (NativeImageScramble.isAvailable()) {
-                image = NativeImageScramble.process(pixels, bitmap.width, bitmap.height, algoCode, processType, key)
-            }
-            if (image == null) {
-                val fallbackImage = Image(pixels, bitmap.width, bitmap.height)
-                image = when (algorithm) {
-                    Algorithm.TOMATO -> TomatoScramble(fallbackImage, key.toDouble()).process(processType)
-                    Algorithm.BLOCK -> BlockScramble(fallbackImage, key).process(processType)
-                    Algorithm.ROW_PIXEL -> RowPixelScramble(fallbackImage, key).process(processType)
-                    Algorithm.PER_PIXEL -> PerPixelScramble(fallbackImage, key).process(processType)
-                    Algorithm.PIC_ENCRYPT_ROW -> PicEncryptRowScramble(fallbackImage, key.toDouble()).process(processType)
-                    else -> PicEncryptRowColumnScramble(fallbackImage, key.toDouble()).process(processType)
+            var didFallback = false
+
+            // Default: Use C++ Native Engine
+            if (!forceCompat && NativeImageScramble.isAvailable()) {
+                try {
+                    image = NativeImageScramble.process(pixels, bitmap.width, bitmap.height, algoCode, processType, key)
+                } catch (t: Throwable) {
+                    image = null
                 }
             }
+
+            // Fallback / Compat Mode: Use legacy Java implementation
+            if (image == null) {
+                if (!forceCompat) {
+                    didFallback = true
+                }
+                try {
+                    val fallbackImage = Image(pixels, bitmap.width, bitmap.height)
+                    image = when (algorithm) {
+                        Algorithm.TOMATO -> TomatoScramble(fallbackImage, key.toDoubleOrNull() ?: 1.0).process(processType)
+                        Algorithm.BLOCK -> BlockScramble(fallbackImage, key).process(processType)
+                        Algorithm.ROW_PIXEL -> RowPixelScramble(fallbackImage, key).process(processType)
+                        Algorithm.PER_PIXEL -> PerPixelScramble(fallbackImage, key).process(processType)
+                        Algorithm.PIC_ENCRYPT_ROW -> PicEncryptRowScramble(fallbackImage, key.toDoubleOrNull() ?: 0.5).process(processType)
+                        Algorithm.PIC_ENCRYPT_ROW_AND_COLUMN -> PicEncryptRowColumnScramble(fallbackImage, key.toDoubleOrNull() ?: 0.5).process(processType)
+                        else -> fallbackImage
+                    }
+                } catch (t: Throwable) {
+                    return false
+                }
+            }
+
+            if (didFallback) {
+                onFallback?.invoke()
+            }
+
             bitmap = Bitmap.createBitmap(image.pixels, image.width, image.height, Bitmap.Config.ARGB_8888)
             thumbnail = loadThumbnail()
+            return true
         }
 
         fun rotate(degree: Float) {
@@ -355,6 +397,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
     var keyString by remember { mutableStateOf("1") }
     var isDropdownMenuExpanded by remember { mutableStateOf(false) }
     var isShowRequestWritePermissionDialog by remember { mutableStateOf(false) }
+    var isCompatMode by remember { mutableStateOf(false) }
 
     // Select and add new images.
     val launcher = rememberLauncherForActivityResult(
@@ -411,7 +454,8 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
             R.string.row_pixel_algorithm,
             R.string.per_pixel_algorithm,
             R.string.pic_encrypt_row_pixel,
-            R.string.pic_encrypt_row_and_column_pixel
+            R.string.pic_encrypt_row_and_column_pixel,
+            R.string.lcg_shuffle_algorithm
         )
 
         ExposedDropdownMenuBox(
@@ -488,6 +532,23 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                 .padding(vertical = 5.dp)
                 .clip(RoundedCornerShape(20.dp))
         )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .padding(horizontal = 10.dp, vertical = 2.dp)
+                .width(280.dp)
+        ) {
+            Text(
+                text = stringResource(id = R.string.compat_mode_label),
+                fontSize = 14.sp
+            )
+            Switch(
+                checked = isCompatMode,
+                onCheckedChange = { isCompatMode = it }
+            )
+        }
     }
 
     PicEncryptTheme {
@@ -630,13 +691,23 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                         val tmpImages = images.clone() as ArrayList<MyImage>
                                         for (i in 0 until tmpImages.size) {
                                             if (images.contains(tmpImages[i])) {
-                                                try {
-                                                    tmpImages[i].process(
-                                                        selectedAlgorithm,
-                                                        processType,
-                                                        keyString
-                                                    )
-                                                } catch (_: Exception) {}
+                                                var hadFallback = false
+                                                val success = tmpImages[i].process(
+                                                    selectedAlgorithm,
+                                                    processType,
+                                                    keyString,
+                                                    forceCompat = isCompatMode,
+                                                    onFallback = { hadFallback = true }
+                                                )
+                                                if (hadFallback) {
+                                                    Looper.prepare()
+                                                    Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                                    Looper.loop()
+                                                } else if (!success) {
+                                                    Looper.prepare()
+                                                    Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                    Looper.loop()
+                                                }
                                             }
                                             progress = (i + 1).toFloat() / tmpImages.size
                                             update = !update
@@ -964,11 +1035,23 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                                 )
                                                                 .show()
                                                             thread {
-                                                                images[i].process(
+                                                                var hadFallback = false
+                                                                val success = images[i].process(
                                                                     selectedAlgorithm,
                                                                     ProcessType.ENCRYPT,
-                                                                    keyString
+                                                                    keyString,
+                                                                    forceCompat = isCompatMode,
+                                                                    onFallback = { hadFallback = true }
                                                                 )
+                                                                if (hadFallback) {
+                                                                    Looper.prepare()
+                                                                    Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                                                    Looper.loop()
+                                                                } else if (!success) {
+                                                                    Looper.prepare()
+                                                                    Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                                    Looper.loop()
+                                                                }
                                                                 update = !update
                                                             }
                                                         }
@@ -1024,11 +1107,23 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                                 )
                                                                 .show()
                                                             thread {
-                                                                images[i].process(
+                                                                var hadFallback = false
+                                                                val success = images[i].process(
                                                                     selectedAlgorithm,
                                                                     ProcessType.DECRYPT,
-                                                                    keyString
+                                                                    keyString,
+                                                                    forceCompat = isCompatMode,
+                                                                    onFallback = { hadFallback = true }
                                                                 )
+                                                                if (hadFallback) {
+                                                                    Looper.prepare()
+                                                                    Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                                                    Looper.loop()
+                                                                } else if (!success) {
+                                                                    Looper.prepare()
+                                                                    Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                                    Looper.loop()
+                                                                }
                                                                 update = !update
                                                             }
                                                         }

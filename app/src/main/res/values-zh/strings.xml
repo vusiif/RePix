@@ -7,6 +7,7 @@
     <string name="per_pixel_algorithm">逐像素混淆</string>
     <string name="pic_encrypt_row_pixel">兼容PicEncrypt: 行模式</string>
     <string name="pic_encrypt_row_and_column_pixel">兼容PicEncrypt: 行+列模式</string>
+    <string name="lcg_shuffle_algorithm">⚡经典LCG全图洗牌 (零拷贝)</string>
     <string name="key_text_field_label">密钥</string>
     <string name="select_image_btn">选择图片</string>
     <string name="encrypt_btn">混淆</string>
@@ -29,4 +30,7 @@
     <string name="image_loading_completed">图片加载完成</string>
     <string name="request_storage_permission_dialog_title">需要存储权限</string>
     <string name="request_storage_permission_dialog_text">请允许存储权限以保存图片到相册。</string>
+    <string name="compat_mode_label">Java 兼容模式</string>
+    <string name="fallback_to_compat_toast">C++ 引擎处理异常，已自动切换至 Java 兼容模式完成</string>
+    <string name="process_failed_toast">处理失败，可尝试开启 Java 兼容模式重试</string>
 </resources>
