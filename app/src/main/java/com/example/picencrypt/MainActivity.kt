@@ -109,7 +109,10 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
+import java.io.FileInputStream
 import java.text.SimpleDateFormat
+import java.util.Locale
+import com.example.picencrypt.utils.SteganographyHelper
 import java.util.Date
 import kotlin.concurrent.thread
 import kotlin.math.round
@@ -157,6 +160,117 @@ fun checkPicEncryptKeyValidity(key: String): Boolean {
         return false
     }
     return key.toDouble() > 0 && key.toDouble() < 1
+}
+
+fun getUriFilename(context: android.content.Context, uri: Uri): String {
+    var name = ""
+    val cursor = context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
+    cursor?.use {
+        if (it.moveToFirst()) {
+            val idx = it.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+            if (idx != -1) {
+                name = it.getString(idx) ?: ""
+            }
+        }
+    }
+    if (name.isEmpty()) {
+        name = uri.lastPathSegment ?: "unknown"
+    }
+    return name
+}
+
+fun saveStegoImage(context: android.content.Context, coverUri: Uri, archiveUri: Uri): Boolean {
+    val appName = context.getString(R.string.app_name)
+    val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+    val coverName = getUriFilename(context, coverUri)
+    val isJpg = coverName.endsWith(".jpg", ignoreCase = true) || coverName.endsWith(".jpeg", ignoreCase = true)
+    val ext = if (isJpg) "jpg" else "png"
+    val mimeType = if (isJpg) "image/jpeg" else "image/png"
+    val fileName = "Stego_${timeStamp}.$ext"
+
+    return try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/$appName")
+            }
+            val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                val coverIn = context.contentResolver.openInputStream(coverUri) ?: return false
+                val archIn = context.contentResolver.openInputStream(archiveUri) ?: return false
+                SteganographyHelper.createStegoImage(coverIn, archIn, out)
+            } ?: return false
+        } else {
+            val saveDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), appName)
+            if (!saveDir.exists()) saveDir.mkdirs()
+            val outFile = File(saveDir, fileName)
+            FileOutputStream(outFile).use { out ->
+                val coverIn = context.contentResolver.openInputStream(coverUri) ?: return false
+                val archIn = context.contentResolver.openInputStream(archiveUri) ?: return false
+                SteganographyHelper.createStegoImage(coverIn, archIn, out)
+            }
+            context.sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse("file://${outFile.absolutePath}")))
+        }
+        true
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
+}
+
+fun extractArchiveFromStego(context: android.content.Context, stegoUri: Uri): String? {
+    val appName = context.getString(R.string.app_name)
+    val cacheFile = File(context.cacheDir, "temp_stego_${System.currentTimeMillis()}.bin")
+    return try {
+        context.contentResolver.openInputStream(stegoUri)?.use { input ->
+            FileOutputStream(cacheFile).use { output ->
+                input.copyTo(output)
+            }
+        } ?: return null
+
+        val detection = SteganographyHelper.detectArchiveOffset(cacheFile) ?: return null
+        val ext = detection.type.extension
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val outFileName = "Extracted_${timeStamp}.$ext"
+
+        val extractedTempFile = File(context.cacheDir, "temp_extracted_${System.currentTimeMillis()}.$ext")
+        val success = SteganographyHelper.extractArchive(cacheFile, extractedTempFile)
+        if (!success || !extractedTempFile.exists() || extractedTempFile.length() == 0L) {
+            extractedTempFile.delete()
+            return null
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, outFileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/$appName")
+            }
+            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                FileInputStream(extractedTempFile).use { input ->
+                    input.copyTo(out)
+                }
+            } ?: return null
+        } else {
+            val saveDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), appName)
+            if (!saveDir.exists()) saveDir.mkdirs()
+            val outFile = File(saveDir, outFileName)
+            FileInputStream(extractedTempFile).use { input ->
+                FileOutputStream(outFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+        extractedTempFile.delete()
+        outFileName
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    } finally {
+        if (cacheFile.exists()) cacheFile.delete()
+    }
 }
 
 @SuppressLint("SimpleDateFormat", "UnusedMaterial3ScaffoldPaddingParameter")
@@ -398,6 +512,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
     var isDropdownMenuExpanded by remember { mutableStateOf(false) }
     var isShowRequestWritePermissionDialog by remember { mutableStateOf(false) }
     var isCompatMode by remember { mutableStateOf(false) }
+    var isShowStegoDialog by remember { mutableStateOf(false) }
 
     // Select and add new images.
     val launcher = rememberLauncherForActivityResult(
@@ -571,6 +686,15 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                         },
                         actions = {
                             Icon(
+                                painter = painterResource(id = R.drawable.import_download_icon_176152),
+                                contentDescription = stringResource(id = R.string.stego_tool_title),
+                                modifier = Modifier
+                                    .padding(horizontal = 8.dp)
+                                    .clickable {
+                                        isShowStegoDialog = true
+                                    }
+                            )
+                            Icon(
                                 imageVector = Icons.Default.Info,
                                 contentDescription = null,
                                 modifier = Modifier
@@ -626,17 +750,29 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                     ) {
                         Spacer(modifier = Modifier.height((if (update) 90 else 90).dp))
 
-                        // Select new images.
-                        Button(
-                            onClick = {
-                                launcher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
-                                    type = "image/*"
-                                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                                })
-                            },
-                            modifier = Modifier.padding(vertical = 5.dp)
+                        // Select new images & Stego tool.
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            Text(text = stringResource(id = R.string.select_image_btn))
+                            Button(
+                                onClick = {
+                                    launcher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                                        type = "image/*"
+                                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                                    })
+                                },
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
+                            ) {
+                                Text(text = stringResource(id = R.string.select_image_btn))
+                            }
+
+                            Button(
+                                onClick = { isShowStegoDialog = true },
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
+                            ) {
+                                Text(text = stringResource(id = R.string.stego_tool_title))
+                            }
                         }
 
                         if (images.size > 0) {
@@ -1285,6 +1421,199 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                         ) {
                             SetMethodAndKey()
                         }
+                    }
+
+                    // Stego (File Steganography) Dialog
+                    if (isShowStegoDialog) {
+                        var stegoMode by remember { mutableStateOf(0) }
+                        var coverUri by remember { mutableStateOf<Uri?>(null) }
+                        var archiveUri by remember { mutableStateOf<Uri?>(null) }
+                        var extractTargetUri by remember { mutableStateOf<Uri?>(null) }
+                        var isStegoProcessing by remember { mutableStateOf(false) }
+
+                        val coverLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.StartActivityForResult(),
+                            onResult = { result ->
+                                result.data?.data?.let { coverUri = it }
+                            }
+                        )
+                        val archiveLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.StartActivityForResult(),
+                            onResult = { result ->
+                                result.data?.data?.let { archiveUri = it }
+                            }
+                        )
+                        val extractTargetLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.StartActivityForResult(),
+                            onResult = { result ->
+                                result.data?.data?.let { extractTargetUri = it }
+                            }
+                        )
+
+                        AlertDialog(
+                            onDismissRequest = { if (!isStegoProcessing) isShowStegoDialog = false },
+                            title = {
+                                Text(
+                                    text = stringResource(id = R.string.stego_tool_title),
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState()),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        Button(
+                                            onClick = { stegoMode = 0 },
+                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                containerColor = if (stegoMode == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                                contentColor = if (stegoMode == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            ),
+                                            modifier = Modifier.weight(1f).padding(end = 4.dp)
+                                        ) {
+                                            Text(text = stringResource(id = R.string.stego_create_mode), fontSize = 12.sp)
+                                        }
+                                        Button(
+                                            onClick = { stegoMode = 1 },
+                                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                                containerColor = if (stegoMode == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                                contentColor = if (stegoMode == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            ),
+                                            modifier = Modifier.weight(1f).padding(start = 4.dp)
+                                        ) {
+                                            Text(text = stringResource(id = R.string.stego_extract_mode), fontSize = 12.sp)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    if (stegoMode == 0) {
+                                        Button(
+                                            onClick = {
+                                                coverLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                                                    type = "image/*"
+                                                })
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(text = stringResource(id = R.string.stego_select_cover))
+                                        }
+                                        Text(
+                                            text = coverUri?.let { getUriFilename(context, it) } ?: "未选择封面",
+                                            fontSize = 12.sp,
+                                            color = if (coverUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Button(
+                                            onClick = {
+                                                archiveLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                                                    type = "*/*"
+                                                })
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(text = stringResource(id = R.string.stego_select_archive))
+                                        }
+                                        Text(
+                                            text = archiveUri?.let { getUriFilename(context, it) } ?: "未选择压缩包",
+                                            fontSize = 12.sp,
+                                            color = if (archiveUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.height(16.dp))
+
+                                        Button(
+                                            onClick = {
+                                                val cUri = coverUri
+                                                val aUri = archiveUri
+                                                if (cUri != null && aUri != null) {
+                                                    isStegoProcessing = true
+                                                    thread {
+                                                        val ok = saveStegoImage(context, cUri, aUri)
+                                                        Looper.prepare()
+                                                        Toast.makeText(
+                                                            context,
+                                                            if (ok) context.getString(R.string.stego_create_success) else context.getString(R.string.stego_failed),
+                                                            Toast.LENGTH_LONG
+                                                        ).show()
+                                                        isStegoProcessing = false
+                                                        if (ok) isShowStegoDialog = false
+                                                        Looper.loop()
+                                                    }
+                                                }
+                                            },
+                                            enabled = coverUri != null && archiveUri != null && !isStegoProcessing,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(text = if (isStegoProcessing) "正在合成..." else stringResource(id = R.string.stego_btn_create))
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = {
+                                                extractTargetLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                                                    type = "*/*"
+                                                })
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(text = stringResource(id = R.string.stego_select_target))
+                                        }
+                                        Text(
+                                            text = extractTargetUri?.let { getUriFilename(context, it) } ?: "未选择图种文件",
+                                            fontSize = 12.sp,
+                                            color = if (extractTargetUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.height(16.dp))
+
+                                        Button(
+                                            onClick = {
+                                                val tUri = extractTargetUri
+                                                if (tUri != null) {
+                                                    isStegoProcessing = true
+                                                    thread {
+                                                        val fileName = extractArchiveFromStego(context, tUri)
+                                                        Looper.prepare()
+                                                        val msg = if (fileName != null) {
+                                                            context.getString(R.string.stego_extract_success) + " (" + fileName + ")"
+                                                        } else {
+                                                            context.getString(R.string.stego_no_archive_found)
+                                                        }
+                                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                                        isStegoProcessing = false
+                                                        if (fileName != null) isShowStegoDialog = false
+                                                        Looper.loop()
+                                                    }
+                                                }
+                                            },
+                                            enabled = extractTargetUri != null && !isStegoProcessing,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(text = if (isStegoProcessing) "正在提取..." else stringResource(id = R.string.stego_btn_extract))
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = { isShowStegoDialog = false },
+                                    enabled = !isStegoProcessing
+                                ) {
+                                    Text("关闭")
+                                }
+                            }
+                        )
                     }
 
                     // Show information about the App.

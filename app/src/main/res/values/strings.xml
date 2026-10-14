@@ -33,4 +33,18 @@
     <string name="compat_mode_label">Java Compatibility Mode</string>
     <string name="fallback_to_compat_toast">Native processing failed, fell back to Java compatibility mode</string>
     <string name="process_failed_toast">Processing failed</string>
+
+    <!-- Steganography (图种) Strings -->
+    <string name="stego_tool_title">Image Steganography</string>
+    <string name="stego_create_mode">Pack Archive into Image</string>
+    <string name="stego_extract_mode">Extract Hidden Archive</string>
+    <string name="stego_select_cover">1. Select Cover Image</string>
+    <string name="stego_select_archive">2. Select Archive (ZIP/RAR/7Z)</string>
+    <string name="stego_select_target">Select Stego Image to Extract</string>
+    <string name="stego_btn_create">Generate Stego Image</string>
+    <string name="stego_btn_extract">Extract Archive</string>
+    <string name="stego_create_success">Stego image saved successfully to Pictures/PicEncrypt!</string>
+    <string name="stego_extract_success">Archive extracted successfully to Downloads/PicEncrypt!</string>
+    <string name="stego_no_archive_found">No hidden archive detected in this image</string>
+    <string name="stego_failed">Operation failed</string>
 </resources>

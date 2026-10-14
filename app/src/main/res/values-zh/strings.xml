@@ -33,4 +33,18 @@
     <string name="compat_mode_label">Java 兼容模式</string>
     <string name="fallback_to_compat_toast">C++ 引擎处理异常，已自动切换至 Java 兼容模式完成</string>
     <string name="process_failed_toast">处理失败，可尝试开启 Java 兼容模式重试</string>
+
+    <!-- 图种隐写工具文案 -->
+    <string name="stego_tool_title">图种工具 (文件隐写)</string>
+    <string name="stego_create_mode">合成图种 (图片 + 压缩包)</string>
+    <string name="stego_extract_mode">提取图种 (从图片解出压缩包)</string>
+    <string name="stego_select_cover">1. 选择封面图片</string>
+    <string name="stego_select_archive">2. 选择压缩包 (ZIP/RAR/7Z)</string>
+    <string name="stego_select_target">选择要提取的图种文件</string>
+    <string name="stego_btn_create">一键合成图种</string>
+    <string name="stego_btn_extract">一键提取压缩包</string>
+    <string name="stego_create_success">图种已成功保存至相册 (Pictures/PicEncrypt)！</string>
+    <string name="stego_extract_success">压缩包已成功提取至 下载目录 (Download/PicEncrypt)！</string>
+    <string name="stego_no_archive_found">未在此图片中检测到隐藏的压缩包</string>
+    <string name="stego_failed">操作失败，请检查文件或权限</string>
 </resources>
