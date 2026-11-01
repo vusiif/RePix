@@ -21,6 +21,8 @@ import com.example.picencrypt.utils.PerPixelScramble
 import com.example.picencrypt.utils.PicEncryptRowColumnScramble
 import com.example.picencrypt.utils.PicEncryptRowScramble
 import com.example.picencrypt.utils.RowPixelScramble
+import com.example.picencrypt.utils.ImageMetrics
+import com.example.picencrypt.utils.ImageMetricsHelper
 import com.example.picencrypt.utils.TomatoScramble
 import java.io.File
 import java.io.FileOutputStream
@@ -40,6 +42,7 @@ class MyImage(
     var filename: String
     var bitmap: Bitmap
     var thumbnail: Bitmap
+    private var cachedMetrics: ImageMetrics? = null
 
     init {
         filename = loadFilename()
@@ -123,6 +126,7 @@ class MyImage(
             if (!success) {
                 return false
             }
+            cachedMetrics = null
             thumbnail = loadThumbnail()
             return true
         }
@@ -177,14 +181,24 @@ class MyImage(
         }
 
         bitmap = Bitmap.createBitmap(image.pixels, image.width, image.height, Bitmap.Config.ARGB_8888)
+        cachedMetrics = null
         thumbnail = loadThumbnail()
         return true
+    }
+
+    fun getMetrics(): ImageMetrics {
+        val cached = cachedMetrics
+        if (cached != null) return cached
+        val calculated = ImageMetricsHelper.calculateMetrics(thumbnail)
+        cachedMetrics = calculated
+        return calculated
     }
 
     fun rotate(degree: Float) {
         val matrix = Matrix()
         matrix.setRotate(degree)
         bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        cachedMetrics = null
         thumbnail = loadThumbnail()
     }
 
@@ -193,6 +207,7 @@ class MyImage(
         bitmap = appContext.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it)
         } ?: bitmap
+        cachedMetrics = null
         thumbnail = loadThumbnail()
     }
 

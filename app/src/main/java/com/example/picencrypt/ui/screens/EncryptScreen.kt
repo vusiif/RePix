@@ -38,9 +38,20 @@ import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.text.font.FontWeight
+import java.util.Locale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -362,9 +373,100 @@ fun EncryptScreen(
                                 bitmap = item.thumbnail.asImageBitmap(),
                                 contentDescription = null,
                                 modifier = Modifier
-                                    .padding(start = 15.dp, end = 15.dp, bottom = 10.dp)
+                                    .padding(start = 15.dp, end = 15.dp, bottom = 6.dp)
                                     .clip(RoundedCornerShape(10.dp))
                             )
+
+                            // 混淆质量指标与直方图分析条 (F3)
+                            val metrics = item.getMetrics()
+                            var isExpandedMetrics by remember(item.thumbnail) { mutableStateOf(false) }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 15.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val isScrambled = metrics.scrambleScore >= 80f
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isScrambled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isScrambled) "🎲 混乱度: " else "🖼️ 混乱度: ",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (isScrambled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = String.format(Locale.getDefault(), "%.1f%% (%s)", metrics.scrambleScore, if (isScrambled) "高强混淆" else "原图特征"),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isScrambled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = if (isExpandedMetrics) "收起分析 ▲" else "直方图分析 ▼",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier
+                                        .clickable { isExpandedMetrics = !isExpandedMetrics }
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+
+                            if (isExpandedMetrics) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 15.dp, end = 15.dp, bottom = 10.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text(
+                                            text = "RGB 通道分布直方图 (暗部 -> 亮部)",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        HistogramChart(
+                                            rHist = metrics.rHistogram,
+                                            gHist = metrics.gHistogram,
+                                            bHist = metrics.bHistogram,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(42.dp)
+                                                .background(Color.Black.copy(alpha = 0.05f), RoundedCornerShape(6.dp))
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = String.format(Locale.getDefault(), "香农信息熵: %.2f / 8.0 bits", metrics.entropy),
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = String.format(Locale.getDefault(), "相邻相关度: %.3f", metrics.correlation),
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // 单图快捷操作浮动按钮列
@@ -559,5 +661,41 @@ fun EncryptScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * 经典 RGB 三通道直方图分布图组件
+ */
+@Composable
+fun HistogramChart(
+    rHist: FloatArray,
+    gHist: FloatArray,
+    bHist: FloatArray,
+    modifier: Modifier = Modifier
+) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val binCount = 32
+        val binWidth = w / binCount
+
+        fun drawChannel(hist: FloatArray, color: Color) {
+            val path = Path()
+            path.moveTo(0f, h)
+            for (i in 0 until binCount) {
+                val value = hist.getOrElse(i) { 0f }.coerceIn(0f, 1f)
+                val x = i * binWidth + binWidth / 2f
+                val y = h - (value * h * 0.88f)
+                path.lineTo(x, y)
+            }
+            path.lineTo(w, h)
+            path.close()
+            drawPath(path, color.copy(alpha = 0.32f))
+        }
+
+        drawChannel(rHist, Color.Red)
+        drawChannel(gHist, Color.Green)
+        drawChannel(bHist, Color.Blue)
     }
 }
