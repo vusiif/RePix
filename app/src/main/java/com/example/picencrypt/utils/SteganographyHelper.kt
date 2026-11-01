@@ -20,6 +20,14 @@ object SteganographyHelper {
         val offset: Long
     )
 
+    data class StegoInspection(
+        val hasArchive: Boolean,
+        val type: ArchiveType = ArchiveType.UNKNOWN,
+        val offset: Long = 0L,
+        val totalSize: Long = 0L,
+        val archiveSize: Long = 0L
+    )
+
     private val ZIP_MAGIC = byteArrayOf(0x50, 0x4B, 0x03, 0x04)
     private val RAR4_MAGIC = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00)
     private val RAR5_MAGIC = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00)
@@ -71,6 +79,119 @@ object SteganographyHelper {
             FileInputStream(archiveFile),
             FileOutputStream(outputFile)
         )
+    }
+
+    /**
+     * 流式预检探查：直接在流上探查隐藏压缩包，避免完整复制文件带来的大 I/O 阻塞
+     */
+    fun detectArchiveFromStream(input: InputStream, totalSize: Long = 0L): StegoInspection {
+        return try {
+            input.use { stream ->
+                var currentOffset = 0L
+                val header = ByteArray(8)
+                val readH = stream.read(header)
+                if (readH != 8) {
+                    return StegoInspection(hasArchive = false, totalSize = totalSize)
+                }
+                currentOffset += 8
+
+                val isPng = header.contentEquals(PNG_MAGIC)
+                if (isPng) {
+                    val chunkHeader = ByteArray(8)
+                    while (true) {
+                        val readChunk = stream.read(chunkHeader)
+                        if (readChunk < 8) break
+                        currentOffset += 8
+
+                        val length = ((chunkHeader[0].toInt() and 0xFF) shl 24) or
+                                ((chunkHeader[1].toInt() and 0xFF) shl 16) or
+                                ((chunkHeader[2].toInt() and 0xFF) shl 8) or
+                                (chunkHeader[3].toInt() and 0xFF)
+                        val type = String(chunkHeader, 4, 4, Charsets.US_ASCII)
+
+                        val skipBytes = length.toLong() + 4L
+                        if (type == "IEND") {
+                            var skipped = 0L
+                            while (skipped < skipBytes) {
+                                val s = stream.skip(skipBytes - skipped)
+                                if (s <= 0) break
+                                skipped += s
+                            }
+                            currentOffset += skipped
+                            break
+                        } else {
+                            var skipped = 0L
+                            while (skipped < skipBytes) {
+                                val s = stream.skip(skipBytes - skipped)
+                                if (s <= 0) break
+                                skipped += s
+                            }
+                            currentOffset += skipped
+                        }
+                    }
+                } else {
+                    var skipped = 0L
+                    val needSkip = 16L - currentOffset
+                    if (needSkip > 0) {
+                        while (skipped < needSkip) {
+                            val s = stream.skip(needSkip - skipped)
+                            if (s <= 0) break
+                            skipped += s
+                        }
+                        currentOffset += skipped
+                    }
+                }
+
+                val buffer = ByteArray(64 * 1024)
+                var prevOverlap = ByteArray(0)
+                var foundResult: DetectionResult? = null
+
+                while (true) {
+                    val read = stream.read(buffer)
+                    if (read <= 0) break
+
+                    val combined = if (prevOverlap.isNotEmpty()) {
+                        val temp = ByteArray(prevOverlap.size + read)
+                        System.arraycopy(prevOverlap, 0, temp, 0, prevOverlap.size)
+                        System.arraycopy(buffer, 0, temp, prevOverlap.size, read)
+                        temp
+                    } else {
+                        buffer.copyOf(read)
+                    }
+
+                    val found = findFirstMagic(combined, 0)
+                    if (found != null) {
+                        val relativeOffset = found.second
+                        val actualOffset = (currentOffset - prevOverlap.size) + relativeOffset
+                        foundResult = DetectionResult(found.first, actualOffset)
+                        break
+                    }
+
+                    val overlapLen = minOf(16, read)
+                    prevOverlap = buffer.copyOfRange(read - overlapLen, read)
+                    currentOffset += read
+                }
+
+                if (foundResult != null) {
+                    val archSize = if (totalSize > foundResult.offset) totalSize - foundResult.offset else 0L
+                    StegoInspection(
+                        hasArchive = true,
+                        type = foundResult.type,
+                        offset = foundResult.offset,
+                        totalSize = totalSize,
+                        archiveSize = archSize
+                    )
+                } else {
+                    StegoInspection(
+                        hasArchive = false,
+                        totalSize = totalSize
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            StegoInspection(hasArchive = false, totalSize = totalSize)
+        }
     }
 
     /**

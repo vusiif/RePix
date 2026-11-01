@@ -13,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.picencrypt.model.Algorithm
 import com.example.picencrypt.model.MyImage
 import com.example.picencrypt.utils.FileUtils
+import com.example.picencrypt.utils.SteganographyHelper
 import com.example.picencrypt.utils.ImageScramble.ProcessType
 import com.example.picencrypt.utils.MirageTankBridge
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +44,15 @@ class MainViewModel : ViewModel() {
     var stegoMode by mutableStateOf(0)
     var stegoCoverUri by mutableStateOf<Uri?>(null)
     var stegoArchiveUri by mutableStateOf<Uri?>(null)
+    var stegoCoverThumbnail by mutableStateOf<Bitmap?>(null)
+    var stegoCoverFileSize by mutableStateOf(0L)
+    var stegoArchiveFileSize by mutableStateOf(0L)
+
     var stegoExtractTargetUri by mutableStateOf<Uri?>(null)
+    var stegoExtractThumbnail by mutableStateOf<Bitmap?>(null)
+    var stegoExtractFileSize by mutableStateOf(0L)
+    var stegoInspection by mutableStateOf<SteganographyHelper.StegoInspection?>(null)
+    var isStegoInspecting by mutableStateOf(false)
     var isStegoProcessing by mutableStateOf(false)
 
     // ---------------- Tab 2: 幻影坦克状态 ----------------
@@ -268,6 +277,67 @@ class MainViewModel : ViewModel() {
     }
 
     // ---------------- 业务方法：图种隐写 ----------------
+
+    fun setStegoCover(uri: Uri?, context: Context) {
+        stegoCoverUri = uri
+        if (uri == null) {
+            stegoCoverThumbnail = null
+            stegoCoverFileSize = 0L
+        } else {
+            viewModelScope.launch(Dispatchers.IO) {
+                val thumb = FileUtils.loadThumbnail(context, uri, 240)
+                val size = FileUtils.getUriFileSize(context, uri)
+                withContext(Dispatchers.Main) {
+                    stegoCoverThumbnail = thumb
+                    stegoCoverFileSize = size
+                }
+            }
+        }
+    }
+
+    fun setStegoArchive(uri: Uri?, context: Context) {
+        stegoArchiveUri = uri
+        if (uri == null) {
+            stegoArchiveFileSize = 0L
+        } else {
+            viewModelScope.launch(Dispatchers.IO) {
+                val size = FileUtils.getUriFileSize(context, uri)
+                withContext(Dispatchers.Main) {
+                    stegoArchiveFileSize = size
+                }
+            }
+        }
+    }
+
+    fun setStegoExtractTarget(uri: Uri?, context: Context) {
+        stegoExtractTargetUri = uri
+        stegoInspection = null
+        if (uri == null) {
+            stegoExtractThumbnail = null
+            stegoExtractFileSize = 0L
+            isStegoInspecting = false
+        } else {
+            isStegoInspecting = true
+            viewModelScope.launch(Dispatchers.IO) {
+                val thumb = FileUtils.loadThumbnail(context, uri, 240)
+                val totalSize = FileUtils.getUriFileSize(context, uri)
+                val inspection = try {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        SteganographyHelper.detectArchiveFromStream(stream, totalSize)
+                    } ?: SteganographyHelper.StegoInspection(hasArchive = false, totalSize = totalSize)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    SteganographyHelper.StegoInspection(hasArchive = false, totalSize = totalSize)
+                }
+                withContext(Dispatchers.Main) {
+                    stegoExtractThumbnail = thumb
+                    stegoExtractFileSize = totalSize
+                    stegoInspection = inspection
+                    isStegoInspecting = false
+                }
+            }
+        }
+    }
 
     fun createStego(context: Context, onResult: (Boolean) -> Unit) {
         val cUri = stegoCoverUri ?: return

@@ -161,4 +161,40 @@ class SteganographyHelperTest {
         val detection = SteganographyHelper.detectArchiveOffset(imageFile)
         assertNull(detection)
     }
+
+    @Test
+    fun testDetectArchiveFromStream() {
+        val imageFile = tempFolder.newFile("stream_cover.jpg")
+        val zipFile = tempFolder.newFile("stream_arch.zip")
+        val stegoFile = tempFolder.newFile("stream_stego.jpg")
+
+        val imgBytes = ByteArray(12 * 1024)
+        Random(555).nextBytes(imgBytes)
+        imgBytes[0] = 0xFF.toByte()
+        imgBytes[1] = 0xD8.toByte()
+        FileOutputStream(imageFile).use { it.write(imgBytes) }
+
+        val zipBytes = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0x10, 0x20, 0x30, 0x40)
+        FileOutputStream(zipFile).use { it.write(zipBytes) }
+
+        SteganographyHelper.createStegoImage(imageFile, zipFile, stegoFile)
+
+        // Stream inspection test
+        val inspection = java.io.FileInputStream(stegoFile).use { fis ->
+            SteganographyHelper.detectArchiveFromStream(fis, stegoFile.length())
+        }
+
+        assertTrue(inspection.hasArchive)
+        assertEquals(SteganographyHelper.ArchiveType.ZIP, inspection.type)
+        assertEquals(imgBytes.size.toLong(), inspection.offset)
+        assertEquals(stegoFile.length(), inspection.totalSize)
+        assertEquals(zipBytes.size.toLong(), inspection.archiveSize)
+
+        // Plain image stream inspection test
+        val plainInspection = java.io.FileInputStream(imageFile).use { fis ->
+            SteganographyHelper.detectArchiveFromStream(fis, imageFile.length())
+        }
+        org.junit.Assert.assertFalse(plainInspection.hasArchive)
+        assertEquals(0L, plainInspection.archiveSize)
+    }
 }

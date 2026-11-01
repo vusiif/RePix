@@ -175,4 +175,47 @@ object FileUtils {
             null
         }
     }
+
+    /**
+     * 准确读取 Uri 对应底层文件的字节长度（优先查询 MediaStore.SIZE，兜底 FileDescriptor）
+     */
+    fun getUriFileSize(context: Context, uri: Uri): Long {
+        return try {
+            val cursor = context.contentResolver.query(
+                uri,
+                arrayOf(MediaStore.MediaColumns.SIZE),
+                null,
+                null,
+                null
+            )
+            var size = 0L
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val idx = it.getColumnIndex(MediaStore.MediaColumns.SIZE)
+                    if (idx != -1) {
+                        size = it.getLong(idx)
+                    }
+                }
+            }
+            if (size <= 0L) {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use {
+                    size = it.statSize
+                }
+            }
+            size.coerceAtLeast(0L)
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
+    /**
+     * 人类可读的文件大小格式化
+     */
+    fun formatFileSize(bytes: Long): String {
+        if (bytes <= 0L) return "0 B"
+        val units = arrayOf("B", "KB", "MB", "GB")
+        var digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
+        digitGroups = digitGroups.coerceIn(0, units.size - 1)
+        return String.format(Locale.getDefault(), "%.2f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+    }
 }
