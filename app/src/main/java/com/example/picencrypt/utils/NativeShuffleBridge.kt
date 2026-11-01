@@ -3,9 +3,18 @@ package com.example.picencrypt.utils
 import android.graphics.Bitmap
 
 object NativeShuffleBridge {
+    private var isLoaded = false
+
     init {
-        System.loadLibrary("repix_native")
+        try {
+            System.loadLibrary("repix_native")
+            isLoaded = true
+        } catch (t: Throwable) {
+            isLoaded = false
+        }
     }
+
+    fun isAvailable(): Boolean = isLoaded
 
     /**
      * 原地（In-place）对 Android Bitmap 进行零拷贝混淆或解密

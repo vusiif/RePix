@@ -146,7 +146,7 @@ object SteganographyHelper {
     }
 
     private fun findFirstMagic(bytes: ByteArray, startIndex: Int): Pair<ArchiveType, Int>? {
-        for (i in startIndex until bytes.size - 4) {
+        for (i in startIndex until bytes.size) {
             if (matches(bytes, i, ZIP_MAGIC)) {
                 return Pair(ArchiveType.ZIP, i)
             }

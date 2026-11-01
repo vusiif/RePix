@@ -13,7 +13,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.os.Looper
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -111,6 +110,8 @@ import com.example.picencrypt.utils.PicEncryptRowScramble
 import com.example.picencrypt.utils.RowPixelScramble
 import com.example.picencrypt.utils.TomatoScramble
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
@@ -120,7 +121,6 @@ import java.util.Locale
 import com.example.picencrypt.utils.SteganographyHelper
 import com.example.picencrypt.utils.MirageTankBridge
 import java.util.Date
-import kotlin.concurrent.thread
 import kotlin.math.round
 
 enum class Algorithm {
@@ -556,7 +556,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                     context.getString(R.string.start_loading_images),
                     Toast.LENGTH_SHORT
                 ).show()
-                thread {
+                coroutineScope.launch(Dispatchers.IO) {
                     isShowProgress = true
                     progress = 0f
                     newImageUriCount = newImageUris.size
@@ -567,13 +567,13 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                     }
                     newImageUriCount = 0
                     isShowProgress = false
-                    Looper.prepare()
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.image_loading_completed),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    Looper.loop()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.image_loading_completed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
         }
@@ -934,16 +934,16 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                 val aUri = stegoArchiveUri
                                                 if (cUri != null && aUri != null) {
                                                     isStegoProcessing = true
-                                                    thread {
+                                                    coroutineScope.launch(Dispatchers.IO) {
                                                         val ok = saveStegoImage(context, cUri, aUri)
-                                                        Looper.prepare()
-                                                        Toast.makeText(
-                                                            context,
-                                                            if (ok) context.getString(R.string.stego_create_success) else context.getString(R.string.stego_failed),
-                                                            Toast.LENGTH_LONG
-                                                        ).show()
-                                                        isStegoProcessing = false
-                                                        Looper.loop()
+                                                        withContext(Dispatchers.Main) {
+                                                            Toast.makeText(
+                                                                context,
+                                                                if (ok) context.getString(R.string.stego_create_success) else context.getString(R.string.stego_failed),
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
+                                                            isStegoProcessing = false
+                                                        }
                                                     }
                                                 }
                                             },
@@ -975,17 +975,17 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                 val tUri = stegoExtractTargetUri
                                                 if (tUri != null) {
                                                     isStegoProcessing = true
-                                                    thread {
+                                                    coroutineScope.launch(Dispatchers.IO) {
                                                         val fileName = extractArchiveFromStego(context, tUri)
-                                                        Looper.prepare()
-                                                        val msg = if (fileName != null) {
-                                                            context.getString(R.string.stego_extract_success) + " (" + fileName + ")"
-                                                        } else {
-                                                            context.getString(R.string.stego_no_archive_found)
+                                                        withContext(Dispatchers.Main) {
+                                                            val msg = if (fileName != null) {
+                                                                context.getString(R.string.stego_extract_success) + " (" + fileName + ")"
+                                                            } else {
+                                                                context.getString(R.string.stego_no_archive_found)
+                                                            }
+                                                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                                            isStegoProcessing = false
                                                         }
-                                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                                                        isStegoProcessing = false
-                                                        Looper.loop()
                                                     }
                                                 }
                                             },
@@ -1082,14 +1082,10 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                             val hUri = mirageHiddenUri
                                             if (cUri != null && hUri != null) {
                                                 isMirageProcessing = true
-                                                thread {
+                                                coroutineScope.launch(Dispatchers.IO) {
                                                     try {
-                                                        val coverStream = context.contentResolver.openInputStream(cUri)
-                                                        val hiddenStream = context.contentResolver.openInputStream(hUri)
-                                                        val coverBmp = BitmapFactory.decodeStream(coverStream)
-                                                        val hiddenBmp = BitmapFactory.decodeStream(hiddenStream)
-                                                        coverStream?.close()
-                                                        hiddenStream?.close()
+                                                        val coverBmp = context.contentResolver.openInputStream(cUri)?.use { BitmapFactory.decodeStream(it) }
+                                                        val hiddenBmp = context.contentResolver.openInputStream(hUri)?.use { BitmapFactory.decodeStream(it) }
 
                                                         if (coverBmp != null && hiddenBmp != null) {
                                                             val (saved, _) = MirageTankBridge.createAndSaveMirageTank(
@@ -1098,26 +1094,26 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                                 hiddenBmp,
                                                                 isColored = mirageIsColoredMode
                                                             )
-                                                            Looper.prepare()
-                                                            Toast.makeText(
-                                                                context,
-                                                                if (saved) context.getString(R.string.mirage_success) else context.getString(R.string.mirage_failed),
-                                                                Toast.LENGTH_LONG
-                                                            ).show()
-                                                            isMirageProcessing = false
-                                                            Looper.loop()
+                                                            withContext(Dispatchers.Main) {
+                                                                Toast.makeText(
+                                                                    context,
+                                                                    if (saved) context.getString(R.string.mirage_success) else context.getString(R.string.mirage_failed),
+                                                                    Toast.LENGTH_LONG
+                                                                ).show()
+                                                                isMirageProcessing = false
+                                                            }
                                                         } else {
-                                                            Looper.prepare()
-                                                            Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
-                                                            isMirageProcessing = false
-                                                            Looper.loop()
+                                                            withContext(Dispatchers.Main) {
+                                                                Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
+                                                                isMirageProcessing = false
+                                                            }
                                                         }
                                                     } catch (e: Exception) {
                                                         e.printStackTrace()
-                                                        Looper.prepare()
-                                                        Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
-                                                        isMirageProcessing = false
-                                                        Looper.loop()
+                                                        withContext(Dispatchers.Main) {
+                                                            Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
+                                                            isMirageProcessing = false
+                                                        }
                                                     }
                                                 }
                                             }
@@ -1177,7 +1173,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                         Toast.LENGTH_SHORT
                                     ).show()
 
-                                    thread {
+                                    coroutineScope.launch(Dispatchers.Default) {
                                         isShowProgress = true
                                         progress = 0f
                                         val tmpImages = images.clone() as ArrayList<MyImage>
@@ -1192,13 +1188,13 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                     onFallback = { hadFallback = true }
                                                 )
                                                 if (hadFallback) {
-                                                    Looper.prepare()
-                                                    Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
-                                                    Looper.loop()
+                                                    withContext(Dispatchers.Main) {
+                                                        Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                                    }
                                                 } else if (!success) {
-                                                    Looper.prepare()
-                                                    Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
-                                                    Looper.loop()
+                                                    withContext(Dispatchers.Main) {
+                                                        Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                    }
                                                 }
                                             }
                                             progress = (i + 1).toFloat() / tmpImages.size
@@ -1207,16 +1203,17 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                         tmpImages.clear()
                                         isShowProgress = false
 
-                                        Looper.prepare()
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(
-                                                if (processType == ProcessType.ENCRYPT)
-                                                    R.string.encryption_completed
-                                                else R.string.decryption_completed),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        Looper.loop()
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(
+                                                    if (processType == ProcessType.ENCRYPT)
+                                                        R.string.encryption_completed
+                                                    else R.string.decryption_completed
+                                                ),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
                                     }
                                 }
 
@@ -1245,7 +1242,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                             ) {
                                 Button(
                                     onClick = {
-                                        thread {
+                                        coroutineScope.launch(Dispatchers.IO) {
                                             isShowProgress = true
                                             progress = 0f
                                             val tmpImages = images.clone() as ArrayList<MyImage>
@@ -1255,11 +1252,13 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                         tmpImages[i].reload()
                                                     } catch (e: FileNotFoundException) {
                                                         tmpImages.removeAt(i)
-                                                        Toast.makeText(
-                                                            context,
-                                                            context.getString(R.string.file_not_found),
-                                                            Toast.LENGTH_SHORT
-                                                        ).show()
+                                                        withContext(Dispatchers.Main) {
+                                                            Toast.makeText(
+                                                                context,
+                                                                context.getString(R.string.file_not_found),
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
                                                     }
                                                 }
                                                 progress = (tmpImages.size - i).toFloat() / tmpImages.size
@@ -1295,7 +1294,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                             ) {
                                 Button(
                                     onClick = {
-                                        thread {
+                                        coroutineScope.launch(Dispatchers.Default) {
                                             isShowProgress = true
                                             progress = 0f
                                             val tmpImages = images.clone() as ArrayList<MyImage>
@@ -1318,7 +1317,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
 
                                 Button(
                                     onClick = {
-                                        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.P
+                                        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
                                             && ContextCompat.checkSelfPermission(context, "android.permission.WRITE_EXTERNAL_STORAGE")
                                             != PackageManager.PERMISSION_GRANTED) {
                                             isShowRequestWritePermissionDialog = true
@@ -1331,7 +1330,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                             Toast.LENGTH_SHORT
                                         ).show()
 
-                                        thread {
+                                        coroutineScope.launch(Dispatchers.IO) {
                                             isShowProgress = true
                                             progress = 0f
                                             val tmpImages = images.clone() as ArrayList<MyImage>
@@ -1345,14 +1344,13 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                             tmpImages.clear()
                                             isShowProgress = false
 
-                                            Looper.prepare()
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.succeeded_save_image_toast),
-                                                Toast.LENGTH_LONG
-                                            )
-                                                .show()
-                                            Looper.loop()
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.succeeded_save_image_toast),
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
                                         }
 
                                     },
@@ -1522,27 +1520,27 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                             Toast
                                                                 .makeText(
                                                                     context,
-                                                                    context.getString(R.string.start_encryption),
+                                                                    context.getString(R.string.start_decryption),
                                                                     Toast.LENGTH_SHORT
                                                                 )
                                                                 .show()
-                                                            thread {
+                                                            coroutineScope.launch(Dispatchers.Default) {
                                                                 var hadFallback = false
                                                                 val success = images[i].process(
                                                                     selectedAlgorithm,
-                                                                    ProcessType.ENCRYPT,
+                                                                    ProcessType.DECRYPT,
                                                                     keyString,
                                                                     forceCompat = isCompatMode,
                                                                     onFallback = { hadFallback = true }
                                                                 )
                                                                 if (hadFallback) {
-                                                                    Looper.prepare()
-                                                                    Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
-                                                                    Looper.loop()
+                                                                    withContext(Dispatchers.Main) {
+                                                                        Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                                                    }
                                                                 } else if (!success) {
-                                                                    Looper.prepare()
-                                                                    Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
-                                                                    Looper.loop()
+                                                                    withContext(Dispatchers.Main) {
+                                                                        Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                                    }
                                                                 }
                                                                 update = !update
                                                             }
@@ -1594,27 +1592,27 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                             Toast
                                                                 .makeText(
                                                                     context,
-                                                                    context.getString(R.string.start_decryption),
+                                                                    context.getString(R.string.start_encryption),
                                                                     Toast.LENGTH_SHORT
                                                                 )
                                                                 .show()
-                                                            thread {
+                                                            coroutineScope.launch(Dispatchers.Default) {
                                                                 var hadFallback = false
                                                                 val success = images[i].process(
                                                                     selectedAlgorithm,
-                                                                    ProcessType.DECRYPT,
+                                                                    ProcessType.ENCRYPT,
                                                                     keyString,
                                                                     forceCompat = isCompatMode,
                                                                     onFallback = { hadFallback = true }
                                                                 )
                                                                 if (hadFallback) {
-                                                                    Looper.prepare()
-                                                                    Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
-                                                                    Looper.loop()
+                                                                    withContext(Dispatchers.Main) {
+                                                                        Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                                                    }
                                                                 } else if (!success) {
-                                                                    Looper.prepare()
-                                                                    Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
-                                                                    Looper.loop()
+                                                                    withContext(Dispatchers.Main) {
+                                                                        Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                                    }
                                                                 }
                                                                 update = !update
                                                             }
@@ -1665,7 +1663,7 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                     null,
                                                     modifier = Modifier
                                                         .clickable {
-                                                            if (Build.VERSION.SDK_INT == Build.VERSION_CODES.P
+                                                            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
                                                                 && ContextCompat.checkSelfPermission(
                                                                     context,
                                                                     "android.permission.WRITE_EXTERNAL_STORAGE"
@@ -1684,20 +1682,18 @@ fun PicEncrypt(modifier: Modifier = Modifier) {
                                                                     Toast.LENGTH_SHORT
                                                                 )
                                                                 .show()
-                                                            thread {
+                                                            coroutineScope.launch(Dispatchers.IO) {
                                                                 val result = images[i].save(i)
-                                                                Looper.prepare()
-                                                                Toast
-                                                                    .makeText(
+                                                                withContext(Dispatchers.Main) {
+                                                                    Toast.makeText(
                                                                         context,
                                                                         if (result) context.getString(
                                                                             R.string.succeeded_save_image_toast
                                                                         )
                                                                         else context.getString(R.string.failed_save_image_toast),
                                                                         Toast.LENGTH_SHORT
-                                                                    )
-                                                                    .show()
-                                                                Looper.loop()
+                                                                    ).show()
+                                                                }
                                                             }
                                                         }
                                                         .padding(10.dp)
