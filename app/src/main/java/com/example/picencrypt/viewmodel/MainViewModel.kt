@@ -1,6 +1,7 @@
 package com.example.picencrypt.viewmodel
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.runtime.getValue
@@ -49,6 +50,10 @@ class MainViewModel : ViewModel() {
     var mirageIsColoredMode by mutableStateOf(true)
     var mirageCoverUri by mutableStateOf<Uri?>(null)
     var mirageHiddenUri by mutableStateOf<Uri?>(null)
+    var mirageCoverThumbnail by mutableStateOf<Bitmap?>(null)
+    var mirageHiddenThumbnail by mutableStateOf<Bitmap?>(null)
+    var miragePreviewBitmap by mutableStateOf<Bitmap?>(null)
+    var mirageBgMode by mutableStateOf(0) // 0: 白底, 1: 黑底, 2: 棋盘格
     var isMirageProcessing by mutableStateOf(false)
 
     // ---------------- 业务方法：图片混淆 ----------------
@@ -291,7 +296,49 @@ class MainViewModel : ViewModel() {
 
     // ---------------- 业务方法：幻影坦克 ----------------
 
-    fun generateMirage(context: Context, onResult: (Boolean) -> Unit) {
+    fun setMirageCover(uri: Uri?, context: Context) {
+        mirageCoverUri = uri
+        miragePreviewBitmap = null
+        if (uri == null) {
+            mirageCoverThumbnail = null
+        } else {
+            viewModelScope.launch(Dispatchers.IO) {
+                val thumb = FileUtils.loadThumbnail(context, uri, 240)
+                withContext(Dispatchers.Main) {
+                    mirageCoverThumbnail = thumb
+                }
+            }
+        }
+    }
+
+    fun setMirageHidden(uri: Uri?, context: Context) {
+        mirageHiddenUri = uri
+        miragePreviewBitmap = null
+        if (uri == null) {
+            mirageHiddenThumbnail = null
+        } else {
+            viewModelScope.launch(Dispatchers.IO) {
+                val thumb = FileUtils.loadThumbnail(context, uri, 240)
+                withContext(Dispatchers.Main) {
+                    mirageHiddenThumbnail = thumb
+                }
+            }
+        }
+    }
+
+    fun swapMirageImages() {
+        val tempUri = mirageCoverUri
+        mirageCoverUri = mirageHiddenUri
+        mirageHiddenUri = tempUri
+
+        val tempThumb = mirageCoverThumbnail
+        mirageCoverThumbnail = mirageHiddenThumbnail
+        mirageHiddenThumbnail = tempThumb
+
+        miragePreviewBitmap = null
+    }
+
+    fun generateMiragePreview(context: Context, onResult: (Boolean) -> Unit = {}) {
         val cUri = mirageCoverUri ?: return
         val hUri = mirageHiddenUri ?: return
         isMirageProcessing = true
@@ -300,15 +347,16 @@ class MainViewModel : ViewModel() {
                 val coverBmp = context.contentResolver.openInputStream(cUri)?.use { BitmapFactory.decodeStream(it) }
                 val hiddenBmp = context.contentResolver.openInputStream(hUri)?.use { BitmapFactory.decodeStream(it) }
                 if (coverBmp != null && hiddenBmp != null) {
-                    val (saved, _) = MirageTankBridge.createAndSaveMirageTank(
-                        context,
+                    val preview = MirageTankBridge.createMirageBitmap(
                         coverBmp,
                         hiddenBmp,
-                        isColored = mirageIsColoredMode
+                        isColored = mirageIsColoredMode,
+                        maxDimension = 1200
                     )
                     withContext(Dispatchers.Main) {
+                        miragePreviewBitmap = preview
                         isMirageProcessing = false
-                        onResult(saved)
+                        onResult(preview != null)
                     }
                 } else {
                     withContext(Dispatchers.Main) {
@@ -321,6 +369,56 @@ class MainViewModel : ViewModel() {
                 withContext(Dispatchers.Main) {
                     isMirageProcessing = false
                     onResult(false)
+                }
+            }
+        }
+    }
+
+    fun saveMiragePreview(context: Context, onResult: (Boolean) -> Unit) {
+        val preview = miragePreviewBitmap
+        if (preview != null) {
+            isMirageProcessing = true
+            viewModelScope.launch(Dispatchers.IO) {
+                val saved = MirageTankBridge.saveMiragePng(context, preview)
+                withContext(Dispatchers.Main) {
+                    isMirageProcessing = false
+                    onResult(saved)
+                }
+            }
+        } else {
+            val cUri = mirageCoverUri ?: return
+            val hUri = mirageHiddenUri ?: return
+            isMirageProcessing = true
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val coverBmp = context.contentResolver.openInputStream(cUri)?.use { BitmapFactory.decodeStream(it) }
+                    val hiddenBmp = context.contentResolver.openInputStream(hUri)?.use { BitmapFactory.decodeStream(it) }
+                    if (coverBmp != null && hiddenBmp != null) {
+                        val (saved, outBmp) = MirageTankBridge.createAndSaveMirageTank(
+                            context,
+                            coverBmp,
+                            hiddenBmp,
+                            isColored = mirageIsColoredMode
+                        )
+                        withContext(Dispatchers.Main) {
+                            if (saved && outBmp != null) {
+                                miragePreviewBitmap = outBmp
+                            }
+                            isMirageProcessing = false
+                            onResult(saved)
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            isMirageProcessing = false
+                            onResult(false)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    withContext(Dispatchers.Main) {
+                        isMirageProcessing = false
+                        onResult(false)
+                    }
                 }
             }
         }

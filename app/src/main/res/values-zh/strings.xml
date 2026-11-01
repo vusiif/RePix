@@ -58,9 +58,21 @@
     <string name="mirage_tool_title">幻影坦克 (光棱坦克)</string>
     <string name="mirage_colored_mode">光棱坦克 (全彩)</string>
     <string name="mirage_gray_mode">经典幻影 (黑白)</string>
-    <string name="mirage_select_cover">1. 选择表图 (白色背景下显现)</string>
-    <string name="mirage_select_hidden">2. 选择里图 (黑色背景下显现)</string>
+    <string name="mirage_cover_label">表图 (白底显示)</string>
+    <string name="mirage_hidden_label">里图 (黑底显示)</string>
+    <string name="mirage_select_cover">选择表图 (白色背景显现)</string>
+    <string name="mirage_select_hidden">选择里图 (黑色背景显现)</string>
+    <string name="mirage_swap_button">互换表里图</string>
     <string name="mirage_btn_generate">一键生成幻影坦克</string>
-    <string name="mirage_success">幻影坦克已成功保存至相册 (Pictures/PicEncrypt)！</string>
-    <string name="mirage_failed">生成失败，请确认图片有效</string>
+    <string name="mirage_btn_preview">生成 / 刷新预览</string>
+    <string name="mirage_btn_save">保存到系统相册</string>
+    <string name="mirage_preview_title">效果实时对比</string>
+    <string name="mirage_bg_white">⚪ 白底模拟</string>
+    <string name="mirage_bg_black">⚫ 黑底模拟</string>
+    <string name="mirage_bg_checker">🏁 透明网格</string>
+    <string name="mirage_hint_white">⚪ 白底效果：模拟浅色聊天气泡或常规网页，表图清晰显现</string>
+    <string name="mirage_hint_black">⚫ 黑底效果：模拟深色模式或点击看全屏大图，里图即时显影</string>
+    <string name="mirage_hint_checker">🏁 透明通道：展示 PNG 原始 Alpha 半透明像素分布</string>
+    <string name="mirage_success">幻影坦克已成功保存至相册 (Pictures/RePix)！</string>
+    <string name="mirage_failed">处理失败，请确认图片有效且可读取</string>
 </resources>

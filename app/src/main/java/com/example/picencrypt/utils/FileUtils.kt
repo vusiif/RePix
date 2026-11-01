@@ -1,6 +1,8 @@
 package com.example.picencrypt.utils
 
 import android.content.ContentValues
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -139,6 +141,38 @@ object FileUtils {
             null
         } finally {
             if (cacheFile.exists()) cacheFile.delete()
+        }
+    }
+
+    /**
+     * 通用安全缩略图加载：利用 inJustDecodeBounds 下采样，防止大图解码 OOM
+     */
+    fun loadThumbnail(context: Context, uri: Uri, maxSize: Int = 300): Bitmap? {
+        return try {
+            val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, boundsOptions)
+            }
+            val outW = boundsOptions.outWidth
+            val outH = boundsOptions.outHeight
+            if (outW <= 0 || outH <= 0) return null
+
+            var sampleSize = 1
+            val maxDim = maxOf(outW, outH)
+            while (maxDim / (sampleSize * 2) >= maxSize) {
+                sampleSize *= 2
+            }
+
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, decodeOptions)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 }

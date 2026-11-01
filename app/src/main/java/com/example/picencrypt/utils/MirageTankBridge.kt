@@ -76,6 +76,26 @@ object MirageTankBridge {
     }
 
     /**
+     * 高阶合成流程：在内存中生成全彩/黑白幻影坦克 Bitmap，供实时预览使用
+     */
+    fun createMirageBitmap(
+        cover: Bitmap,
+        hidden: Bitmap,
+        isColored: Boolean = true,
+        maxDimension: Int = 1200
+    ): Bitmap? {
+        val (scaledCover, scaledHidden, outBitmap) = alignBitmaps(cover, hidden, maxDimension)
+
+        val success = if (isColored) {
+            processColoredMirageTank(scaledCover, scaledHidden, outBitmap)
+        } else {
+            processGrayMirageTank(scaledCover, scaledHidden, outBitmap)
+        }
+
+        return if (success) outBitmap else null
+    }
+
+    /**
      * 高阶合成流程：支持全彩/黑白模式生成，并强制以 PNG 格式保存到系统相册
      */
     fun createAndSaveMirageTank(
@@ -85,18 +105,7 @@ object MirageTankBridge {
         isColored: Boolean = true,
         maxDimension: Int = 1200
     ): Pair<Boolean, Bitmap?> {
-        val (scaledCover, scaledHidden, outBitmap) = alignBitmaps(cover, hidden, maxDimension)
-
-        val success = if (isColored) {
-            processColoredMirageTank(scaledCover, scaledHidden, outBitmap)
-        } else {
-            processGrayMirageTank(scaledCover, scaledHidden, outBitmap)
-        }
-
-        if (!success) {
-            return Pair(false, null)
-        }
-
+        val outBitmap = createMirageBitmap(cover, hidden, isColored, maxDimension) ?: return Pair(false, null)
         val saved = saveMiragePng(context, outBitmap)
         return Pair(saved, outBitmap)
     }
