@@ -22,12 +22,13 @@ object NativeShuffleBridge {
      * @param bitmap 必须为 ARGB_8888 格式的 Bitmap
      * @param seed 随机数种子 (对标 java.util.Random)
      * @param isDecrypt false 为加密/混淆，true 为解密还原
+     * @return true 处理成功, false 失败
      */
     external fun scrambleBitmap(
         bitmap: Bitmap,
         seed: Long,
         isDecrypt: Boolean
-    )
+    ): Boolean
 
     /**
      * 将密码字符串确定性映射为 64 位 Long 种子

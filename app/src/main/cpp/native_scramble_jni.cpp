@@ -154,7 +154,7 @@ Java_com_example_picencrypt_utils_NativeImageScramble_nativeProcessBitmap(
 
 // ---------------- NativeShuffleBridge Zero-Copy API ----------------
 
-JNIEXPORT void JNICALL
+JNIEXPORT jboolean JNICALL
 Java_com_example_picencrypt_utils_NativeShuffleBridge_scrambleBitmap(
     JNIEnv* env,
     jclass /* clazz */,
@@ -162,19 +162,19 @@ Java_com_example_picencrypt_utils_NativeShuffleBridge_scrambleBitmap(
     jlong seed,
     jboolean is_decrypt
 ) {
-    if (!j_bitmap) return;
+    if (!j_bitmap) return JNI_FALSE;
 
     AndroidBitmapInfo info;
     void* raw_pixels = nullptr;
 
     // 1. Get Bitmap structure info
-    if (AndroidBitmap_getInfo(env, j_bitmap, &info) < 0) return;
+    if (AndroidBitmap_getInfo(env, j_bitmap, &info) < 0) return JNI_FALSE;
 
     // Must be RGBA_8888
-    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) return;
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) return JNI_FALSE;
 
     // 2. Lock underlying pixel memory (True zero-copy)
-    if (AndroidBitmap_lockPixels(env, j_bitmap, &raw_pixels) < 0 || !raw_pixels) return;
+    if (AndroidBitmap_lockPixels(env, j_bitmap, &raw_pixels) < 0 || !raw_pixels) return JNI_FALSE;
 
     int32_t total_pixels = static_cast<int32_t>(info.width * info.height);
 
@@ -183,6 +183,7 @@ Java_com_example_picencrypt_utils_NativeShuffleBridge_scrambleBitmap(
 
     // 4. Unlock memory, changes are immediately reflected
     AndroidBitmap_unlockPixels(env, j_bitmap);
+    return JNI_TRUE;
 }
 
 } // extern "C"

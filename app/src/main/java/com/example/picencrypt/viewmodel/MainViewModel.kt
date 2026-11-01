@@ -9,7 +9,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.picencrypt.R
 import com.example.picencrypt.model.Algorithm
 import com.example.picencrypt.model.MyImage
 import com.example.picencrypt.utils.FileUtils
@@ -100,34 +99,45 @@ class MainViewModel : ViewModel() {
         processType: ProcessType,
         onFallbackToast: () -> Unit,
         onFailedToast: () -> Unit,
-        onFinish: (isEncrypt: Boolean) -> Unit
+        onFinish: (isEncrypt: Boolean, successCount: Int, failCount: Int) -> Unit
     ) {
         if (images.isEmpty()) return
         viewModelScope.launch(Dispatchers.Default) {
             isShowProgress = true
             progress = 0f
-            val count = images.size
-            for (i in 0 until count) {
-                if (i in images.indices) {
-                    var hadFallback = false
-                    val success = images[i].process(
-                        selectedAlgorithm,
-                        processType,
-                        keyString,
-                        forceCompat = isCompatMode,
-                        onFallback = { hadFallback = true }
-                    )
-                    if (hadFallback) {
-                        withContext(Dispatchers.Main) { onFallbackToast() }
-                    } else if (!success) {
-                        withContext(Dispatchers.Main) { onFailedToast() }
-                    }
+            // 快照保护，避免遍历中列表变动造成并发竞态 (P1-2)
+            val snapshot = images.toList()
+            var successCount = 0
+            var failCount = 0
+            for (i in snapshot.indices) {
+                val item = snapshot[i]
+                var hadFallback = false
+                val success = item.process(
+                    selectedAlgorithm,
+                    processType,
+                    keyString,
+                    forceCompat = isCompatMode,
+                    onFallback = { hadFallback = true }
+                )
+                if (success) {
+                    successCount++
+                } else {
+                    failCount++
                 }
-                progress = (i + 1).toFloat() / count
+                if (hadFallback) {
+                    withContext(Dispatchers.Main) { onFallbackToast() }
+                } else if (!success) {
+                    withContext(Dispatchers.Main) { onFailedToast() }
+                }
+                progress = (i + 1).toFloat() / snapshot.size
             }
             withContext(Dispatchers.Main) {
+                // 触发列表通知，确保 Compose 观察到元素属性变化
+                for (i in images.indices) {
+                    images[i] = images[i]
+                }
                 isShowProgress = false
-                onFinish(processType == ProcessType.ENCRYPT)
+                onFinish(processType == ProcessType.ENCRYPT, successCount, failCount)
             }
         }
     }
@@ -137,21 +147,23 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             isShowProgress = true
             progress = 0f
-            val size = images.size
-            for (i in size - 1 downTo 0) {
-                if (i in images.indices) {
-                    try {
-                        images[i].reload()
-                    } catch (e: FileNotFoundException) {
-                        withContext(Dispatchers.Main) {
-                            if (i in images.indices) images.removeAt(i)
-                            onFileNotFound()
-                        }
+            val snapshot = images.toList()
+            for (i in snapshot.indices.reversed()) {
+                val item = snapshot[i]
+                try {
+                    item.reload()
+                } catch (e: FileNotFoundException) {
+                    withContext(Dispatchers.Main) {
+                        images.remove(item)
+                        onFileNotFound()
                     }
                 }
-                progress = (size - i).toFloat() / size
+                progress = (snapshot.size - i).toFloat() / snapshot.size
             }
             withContext(Dispatchers.Main) {
+                for (i in images.indices) {
+                    images[i] = images[i]
+                }
                 isShowProgress = false
             }
         }
@@ -162,34 +174,36 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.Default) {
             isShowProgress = true
             progress = 0f
-            val count = images.size
-            for (i in 0 until count) {
-                if (i in images.indices) {
-                    images[i].rotate(180f)
-                }
-                progress = (i + 1).toFloat() / count
+            val snapshot = images.toList()
+            for (i in snapshot.indices) {
+                snapshot[i].rotate(180f)
+                progress = (i + 1).toFloat() / snapshot.size
             }
             withContext(Dispatchers.Main) {
+                for (i in images.indices) {
+                    images[i] = images[i]
+                }
                 isShowProgress = false
             }
         }
     }
 
-    fun saveAllImages(onComplete: () -> Unit) {
+    fun saveAllImages(onComplete: (successCount: Int, failCount: Int) -> Unit) {
         if (images.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             isShowProgress = true
             progress = 0f
-            val count = images.size
-            for (i in 0 until count) {
-                if (i in images.indices) {
-                    images[i].save(i)
-                }
-                progress = (i + 1).toFloat() / count
+            val snapshot = images.toList()
+            var successCount = 0
+            var failCount = 0
+            for (i in snapshot.indices) {
+                val ok = snapshot[i].save(i)
+                if (ok) successCount++ else failCount++
+                progress = (i + 1).toFloat() / snapshot.size
             }
             withContext(Dispatchers.Main) {
                 isShowProgress = false
-                onComplete()
+                onComplete(successCount, failCount)
             }
         }
     }
@@ -201,9 +215,10 @@ class MainViewModel : ViewModel() {
         onFailedToast: () -> Unit
     ) {
         if (index !in images.indices) return
+        val item = images[index]
         viewModelScope.launch(Dispatchers.Default) {
             var hadFallback = false
-            val success = images[index].process(
+            val success = item.process(
                 selectedAlgorithm,
                 processType,
                 keyString,
@@ -211,6 +226,9 @@ class MainViewModel : ViewModel() {
                 onFallback = { hadFallback = true }
             )
             withContext(Dispatchers.Main) {
+                if (index in images.indices) {
+                    images[index] = item // 触发 Snapshot 重绘
+                }
                 if (hadFallback) onFallbackToast()
                 else if (!success) onFailedToast()
             }
@@ -219,20 +237,25 @@ class MainViewModel : ViewModel() {
 
     fun rotateSingleImage(index: Int) {
         if (index in images.indices) {
-            images[index].rotate(180f)
+            val item = images[index]
+            item.rotate(180f)
+            images[index] = item
         }
     }
 
     fun reloadSingleImage(index: Int) {
         if (index in images.indices) {
-            images[index].reload()
+            val item = images[index]
+            item.reload()
+            images[index] = item
         }
     }
 
     fun saveSingleImage(index: Int, onComplete: (Boolean) -> Unit) {
         if (index !in images.indices) return
+        val item = images[index]
         viewModelScope.launch(Dispatchers.IO) {
-            val result = images[index].save(index)
+            val result = item.save(index)
             withContext(Dispatchers.Main) {
                 onComplete(result)
             }

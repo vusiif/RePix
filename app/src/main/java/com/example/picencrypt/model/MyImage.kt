@@ -27,15 +27,23 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
-class MyImage(val uri: Uri, private val context: Context) {
+class MyImage(
+    val uri: Uri,
+    context: Context,
+    val id: String = UUID.randomUUID().toString()
+) {
+    // 强制使用 Application Context，彻底规避 Activity 内存泄露 (P1-4)
+    private val appContext: Context = context.applicationContext
+
     var filename: String
     var bitmap: Bitmap
     var thumbnail: Bitmap
 
     init {
         filename = loadFilename()
-        bitmap = context.contentResolver.openInputStream(uri)?.use {
+        bitmap = appContext.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it)
         } ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
         thumbnail = loadThumbnail()
@@ -44,7 +52,7 @@ class MyImage(val uri: Uri, private val context: Context) {
     fun loadFilename(): String {
         var name = ""
         val projection = arrayOf(MediaStore.Images.Media.DISPLAY_NAME)
-        val cursor = context.contentResolver.query(uri, projection, null, null, null)
+        val cursor = appContext.contentResolver.query(uri, projection, null, null, null)
         cursor?.use {
             if (it.moveToFirst()) {
                 val idx = it.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)
@@ -59,16 +67,43 @@ class MyImage(val uri: Uri, private val context: Context) {
         return name
     }
 
+    /**
+     * 缩略图降采样解码：先探测尺寸再下采样加载，有效预防多大图列表 OOM (P0-1)
+     */
     fun loadThumbnail(): Bitmap {
         val maxSize = 800
-        val ratio: Float = if (bitmap.width > bitmap.height) {
-            if (bitmap.width > maxSize) bitmap.width.toFloat() / maxSize else 1f
-        } else {
-            if (bitmap.height > maxSize) bitmap.height.toFloat() / maxSize else 1f
+        val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        appContext.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, boundsOptions)
         }
-        val targetW = (bitmap.width.toFloat() / ratio).toInt().coerceAtLeast(1)
-        val targetH = (bitmap.height.toFloat() / ratio).toInt().coerceAtLeast(1)
-        return ThumbnailUtils.extractThumbnail(bitmap, targetW, targetH)
+
+        val outW = boundsOptions.outWidth
+        val outH = boundsOptions.outHeight
+        val sampledBitmap = if (outW > 0 && outH > 0) {
+            var sampleSize = 1
+            val maxDim = maxOf(outW, outH)
+            while (maxDim / (sampleSize * 2) >= maxSize) {
+                sampleSize *= 2
+            }
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            appContext.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, decodeOptions)
+            } ?: bitmap
+        } else {
+            bitmap
+        }
+
+        val ratio: Float = if (sampledBitmap.width > sampledBitmap.height) {
+            if (sampledBitmap.width > maxSize) sampledBitmap.width.toFloat() / maxSize else 1f
+        } else {
+            if (sampledBitmap.height > maxSize) sampledBitmap.height.toFloat() / maxSize else 1f
+        }
+        val targetW = (sampledBitmap.width.toFloat() / ratio).toInt().coerceAtLeast(1)
+        val targetH = (sampledBitmap.height.toFloat() / ratio).toInt().coerceAtLeast(1)
+        return ThumbnailUtils.extractThumbnail(sampledBitmap, targetW, targetH)
     }
 
     fun process(
@@ -78,13 +113,16 @@ class MyImage(val uri: Uri, private val context: Context) {
         forceCompat: Boolean = false,
         onFallback: (() -> Unit)? = null
     ): Boolean {
-        // LCG_SHUFFLE: Direct Zero-Copy in-place processing on Bitmap
+        // LCG_SHUFFLE: Direct Zero-Copy in-place processing on Bitmap, 严格判定 JNI 返回值 (P0-2)
         if (algorithm == Algorithm.LCG_SHUFFLE) {
             if (!NativeShuffleBridge.isAvailable()) {
                 return false
             }
             val seed = NativeShuffleBridge.stringToSeed(key)
-            NativeShuffleBridge.scrambleBitmap(bitmap, seed, processType == ProcessType.DECRYPT)
+            val success = NativeShuffleBridge.scrambleBitmap(bitmap, seed, processType == ProcessType.DECRYPT)
+            if (!success) {
+                return false
+            }
             thumbnail = loadThumbnail()
             return true
         }
@@ -127,7 +165,7 @@ class MyImage(val uri: Uri, private val context: Context) {
                     Algorithm.PER_PIXEL -> PerPixelScramble(fallbackImage, key).process(processType)
                     Algorithm.PIC_ENCRYPT_ROW -> PicEncryptRowScramble(fallbackImage, key.toDoubleOrNull() ?: 0.5).process(processType)
                     Algorithm.PIC_ENCRYPT_ROW_AND_COLUMN -> PicEncryptRowColumnScramble(fallbackImage, key.toDoubleOrNull() ?: 0.5).process(processType)
-                    else -> fallbackImage
+                    Algorithm.LCG_SHUFFLE -> fallbackImage
                 }
             } catch (t: Throwable) {
                 return false
@@ -152,7 +190,7 @@ class MyImage(val uri: Uri, private val context: Context) {
 
     fun reload() {
         filename = loadFilename()
-        bitmap = context.contentResolver.openInputStream(uri)?.use {
+        bitmap = appContext.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it)
         } ?: bitmap
         thumbnail = loadThumbnail()
@@ -164,7 +202,7 @@ class MyImage(val uri: Uri, private val context: Context) {
         ms -= ms / 1000 * 1000 + index
         val s = String.format(Locale.US, "%03d", ms)
         val imageName = "PicEncrypt_${dateTime + s}.png"
-        val appName = context.getString(R.string.app_name)
+        val appName = appContext.getString(R.string.app_name)
         val saveDir = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
             appName
@@ -177,12 +215,12 @@ class MyImage(val uri: Uri, private val context: Context) {
                     put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
                     put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/$appName")
                 }
-                val insertUri = context.contentResolver.insert(
+                val insertUri = appContext.contentResolver.insert(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     contentValues
                 ) ?: return false
 
-                context.contentResolver.openOutputStream(insertUri)?.use { out ->
+                appContext.contentResolver.openOutputStream(insertUri)?.use { out ->
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 } ?: false
             } else {
@@ -194,7 +232,7 @@ class MyImage(val uri: Uri, private val context: Context) {
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                     out.flush()
                 }
-                context.sendBroadcast(
+                appContext.sendBroadcast(
                     Intent(
                         Intent.ACTION_MEDIA_SCANNER_SCAN_FILE,
                         Uri.parse("file://${filePath.absolutePath}")

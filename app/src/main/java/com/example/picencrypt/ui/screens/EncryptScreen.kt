@@ -23,11 +23,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -70,7 +71,7 @@ fun EncryptScreen(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
     val launcher = rememberLauncherForActivityResult(
@@ -116,367 +117,394 @@ fun EncryptScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        Column(
+        LazyColumn(
+            state = listState,
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = if (viewModel.images.isNotEmpty()) Arrangement.Top else Arrangement.Center,
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(bottom = 120.dp)
                 .pointerInput(Unit) {
                     detectTapGestures(onTap = { focusManager.clearFocus() })
                 }
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            item(key = "header_section") {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Spacer(modifier = Modifier.height(16.dp))
 
-            // 顶部选择图片按钮
-            Button(
-                onClick = {
-                    launcher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
-                        type = "image/*"
-                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                    })
-                },
-                modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .padding(vertical = 6.dp)
-            ) {
-                Text(text = stringResource(id = R.string.select_image_btn))
+                    // 顶部选择图片按钮
+                    Button(
+                        onClick = {
+                            launcher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                                type = "image/*"
+                                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                            })
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .padding(vertical = 6.dp)
+                    ) {
+                        Text(text = stringResource(id = R.string.select_image_btn))
+                    }
+
+                    if (viewModel.images.isNotEmpty()) {
+                        val isEnableExpanded = !viewModel.isShowMethodAndKeySettingOnTopLayer
+                        MethodAndKeySettings(
+                            viewModel = viewModel,
+                            isExpandedAllowed = isEnableExpanded
+                        )
+
+                        // 批量混淆与解混淆操作按钮
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 5.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    if (checkKeyValid()) {
+                                        Toast.makeText(context, context.getString(R.string.start_encryption), Toast.LENGTH_SHORT).show()
+                                        viewModel.processAllImages(
+                                            processType = ProcessType.ENCRYPT,
+                                            onFallbackToast = {
+                                                Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                            },
+                                            onFailedToast = {
+                                                Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                            },
+                                            onFinish = { _, successCount, failCount ->
+                                                val toastMsg = if (failCount == 0) {
+                                                    context.getString(R.string.encryption_completed) + " (共 ${successCount} 张)"
+                                                } else {
+                                                    "完成混淆：成功 ${successCount} 张，失败 ${failCount} 张"
+                                                }
+                                                Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+                                            }
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.width(120.dp)
+                            ) {
+                                Text(text = stringResource(id = R.string.encrypt_btn))
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (checkKeyValid()) {
+                                        Toast.makeText(context, context.getString(R.string.start_decryption), Toast.LENGTH_SHORT).show()
+                                        viewModel.processAllImages(
+                                            processType = ProcessType.DECRYPT,
+                                            onFallbackToast = {
+                                                Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                            },
+                                            onFailedToast = {
+                                                Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                            },
+                                            onFinish = { _, successCount, failCount ->
+                                                val toastMsg = if (failCount == 0) {
+                                                    context.getString(R.string.decryption_completed) + " (共 ${successCount} 张)"
+                                                } else {
+                                                    "完成解混淆：成功 ${successCount} 张，失败 ${failCount} 张"
+                                                }
+                                                Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+                                            }
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.width(120.dp)
+                            ) {
+                                Text(text = stringResource(id = R.string.decrypt_btn))
+                            }
+                        }
+
+                        // 重置与清空按钮
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 5.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    viewModel.reloadAllImages(
+                                        onFileNotFound = {
+                                            Toast.makeText(context, context.getString(R.string.file_not_found), Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                },
+                                modifier = Modifier.width(120.dp)
+                            ) {
+                                Text(text = stringResource(id = R.string.reset_btn))
+                            }
+
+                            Button(
+                                onClick = { viewModel.clearAllImages() },
+                                modifier = Modifier.width(120.dp)
+                            ) {
+                                Text(text = stringResource(id = R.string.clear_btn))
+                            }
+                        }
+
+                        // 翻转180度与保存全部按钮
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 5.dp)
+                        ) {
+                            Button(
+                                onClick = { viewModel.rotateAllImages() },
+                                modifier = Modifier.width(120.dp)
+                            ) {
+                                Text(text = stringResource(id = R.string.rotate180_btn))
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                                        ContextCompat.checkSelfPermission(context, "android.permission.WRITE_EXTERNAL_STORAGE")
+                                        != PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        viewModel.isShowRequestWritePermissionDialog = true
+                                        return@Button
+                                    }
+
+                                    Toast.makeText(context, context.getString(R.string.start_saving), Toast.LENGTH_SHORT).show()
+                                    viewModel.saveAllImages { successCount, failCount ->
+                                        val msg = if (failCount == 0) {
+                                            context.getString(R.string.succeeded_save_image_toast) + " (${successCount}张)"
+                                        } else {
+                                            "保存完成：成功 ${successCount} 张，失败 ${failCount} 张"
+                                        }
+                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                modifier = Modifier.width(120.dp)
+                            ) {
+                                Text(text = stringResource(id = R.string.save_btn))
+                            }
+                        }
+
+                        // 进度条与数量统计
+                        if (viewModel.isShowProgress) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .padding(vertical = 5.dp)
+                                    .fillMaxWidth()
+                                    .height(30.dp)
+                            ) {
+                                LinearProgressIndicator(
+                                    progress = { viewModel.progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth(0.8f)
+                                        .padding(horizontal = 10.dp)
+                                )
+                                val total = if (viewModel.newImageUriCount > 0) {
+                                    round(viewModel.images.size.toFloat() / viewModel.progress.coerceAtLeast(0.001f)).toInt()
+                                } else {
+                                    viewModel.images.size
+                                }
+                                Text(
+                                    text = "${round(total * viewModel.progress).toInt()}/$total",
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                        } else {
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+                }
             }
 
-            if (viewModel.images.isNotEmpty()) {
-                val isEnableExpanded = !viewModel.isShowMethodAndKeySettingOnTopLayer
-                MethodAndKeySettings(
-                    viewModel = viewModel,
-                    isExpandedAllowed = isEnableExpanded
-                )
-
-                // 批量混淆与解混淆操作按钮
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+            // 图片列表使用高效 LazyColumn + 稳定 Key (P1-3)
+            itemsIndexed(
+                items = viewModel.images,
+                key = { _, item -> item.id }
+            ) { i, item ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceEvenly,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 5.dp)
+                        .fillMaxWidth(0.95f)
+                        .padding(bottom = 15.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            if (isSystemInDarkTheme()) Color(50, 50, 50)
+                            else Color(245, 240, 242)
+                        )
                 ) {
-                    Button(
-                        onClick = {
-                            if (checkKeyValid()) {
-                                Toast.makeText(context, context.getString(R.string.start_encryption), Toast.LENGTH_SHORT).show()
-                                viewModel.processAllImages(
-                                    processType = ProcessType.ENCRYPT,
-                                    onFallbackToast = {
-                                        Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
-                                    },
-                                    onFailedToast = {
-                                        Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
-                                    },
-                                    onFinish = {
-                                        Toast.makeText(context, context.getString(R.string.encryption_completed), Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                            }
-                        },
-                        modifier = Modifier.width(120.dp)
-                    ) {
-                        Text(text = stringResource(id = R.string.encrypt_btn))
-                    }
-
-                    Button(
-                        onClick = {
-                            if (checkKeyValid()) {
-                                Toast.makeText(context, context.getString(R.string.start_decryption), Toast.LENGTH_SHORT).show()
-                                viewModel.processAllImages(
-                                    processType = ProcessType.DECRYPT,
-                                    onFallbackToast = {
-                                        Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
-                                    },
-                                    onFailedToast = {
-                                        Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
-                                    },
-                                    onFinish = {
-                                        Toast.makeText(context, context.getString(R.string.decryption_completed), Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                            }
-                        },
-                        modifier = Modifier.width(120.dp)
-                    ) {
-                        Text(text = stringResource(id = R.string.decrypt_btn))
-                    }
-                }
-
-                // 重置与清空按钮
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 5.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            viewModel.reloadAllImages(
-                                onFileNotFound = {
-                                    Toast.makeText(context, context.getString(R.string.file_not_found), Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                        },
-                        modifier = Modifier.width(120.dp)
-                    ) {
-                        Text(text = stringResource(id = R.string.reset_btn))
-                    }
-
-                    Button(
-                        onClick = { viewModel.clearAllImages() },
-                        modifier = Modifier.width(120.dp)
-                    ) {
-                        Text(text = stringResource(id = R.string.clear_btn))
-                    }
-                }
-
-                // 翻转180度与保存全部按钮
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 5.dp)
-                ) {
-                    Button(
-                        onClick = { viewModel.rotateAllImages() },
-                        modifier = Modifier.width(120.dp)
-                    ) {
-                        Text(text = stringResource(id = R.string.rotate180_btn))
-                    }
-
-                    Button(
-                        onClick = {
-                            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-                                ContextCompat.checkSelfPermission(context, "android.permission.WRITE_EXTERNAL_STORAGE")
-                                != PackageManager.PERMISSION_GRANTED
-                            ) {
-                                viewModel.isShowRequestWritePermissionDialog = true
-                                return@Button
-                            }
-
-                            Toast.makeText(context, context.getString(R.string.start_saving), Toast.LENGTH_SHORT).show()
-                            viewModel.saveAllImages {
-                                Toast.makeText(context, context.getString(R.string.succeeded_save_image_toast), Toast.LENGTH_LONG).show()
-                            }
-                        },
-                        modifier = Modifier.width(120.dp)
-                    ) {
-                        Text(text = stringResource(id = R.string.save_btn))
-                    }
-                }
-
-                // 进度条与数量统计
-                if (viewModel.isShowProgress) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier
-                            .padding(vertical = 5.dp)
-                            .fillMaxWidth()
-                            .height(30.dp)
-                    ) {
-                        LinearProgressIndicator(
-                            progress = { viewModel.progress },
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // 文件名与图片展示
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
                             modifier = Modifier
-                                .fillMaxWidth(0.8f)
-                                .padding(horizontal = 10.dp)
-                        )
-                        val total = if (viewModel.newImageUriCount > 0) {
-                            round(viewModel.images.size.toFloat() / viewModel.progress.coerceAtLeast(0.001f)).toInt()
-                        } else {
-                            viewModel.images.size
-                        }
-                        Text(
-                            text = "${round(total * viewModel.progress).toInt()}/$total",
-                            fontSize = 12.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                } else {
-                    Spacer(modifier = Modifier.height(30.dp))
-                }
-
-                // 图片列表卡片
-                for (i in viewModel.images.indices) {
-                    val item = viewModel.images[i]
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceEvenly,
-                        modifier = Modifier
-                            .fillMaxWidth(0.95f)
-                            .padding(bottom = 15.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(
-                                if (isSystemInDarkTheme()) Color(50, 50, 50)
-                                else Color(245, 240, 242)
-                            )
-                    ) {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            // 文件名与图片展示
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(end = 50.dp)
-                            ) {
-                                SelectionContainer {
-                                    Text(
-                                        text = item.filename,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 15.dp)
-                                    )
-                                }
-
-                                Image(
-                                    bitmap = item.thumbnail.asImageBitmap(),
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .padding(start = 15.dp, end = 15.dp, bottom = 10.dp)
-                                        .clip(RoundedCornerShape(10.dp))
+                                .fillMaxSize()
+                                .padding(end = 50.dp)
+                        ) {
+                            SelectionContainer {
+                                Text(
+                                    text = item.filename,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 15.dp)
                                 )
                             }
 
-                            // 单图快捷操作浮动按钮列
-                            Column(
-                                horizontalAlignment = Alignment.End,
-                                verticalArrangement = Arrangement.Top,
+                            Image(
+                                bitmap = item.thumbnail.asImageBitmap(),
+                                contentDescription = null,
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 10.dp)
-                            ) {
-                                // 删除
-                                Row(modifier = Modifier.clip(CircleShape)) {
-                                    Icon(
-                                        Icons.Rounded.Close,
-                                        contentDescription = "Remove",
-                                        modifier = Modifier
-                                            .clickable { viewModel.removeImageAt(i) }
-                                            .padding(10.dp)
-                                    )
-                                }
+                                    .padding(start = 15.dp, end = 15.dp, bottom = 10.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                            )
+                        }
 
-                                // 独立设置
-                                Row(modifier = Modifier.clip(CircleShape)) {
-                                    Icon(
-                                        Icons.Rounded.Settings,
-                                        contentDescription = "Settings",
-                                        modifier = Modifier
-                                            .clickable { viewModel.isShowMethodAndKeySettingOnTopLayer = true }
-                                            .padding(10.dp)
-                                    )
-                                }
+                        // 单图快捷操作浮动按钮列
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.Top,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 10.dp)
+                        ) {
+                            // 删除
+                            Row(modifier = Modifier.clip(CircleShape)) {
+                                Icon(
+                                    Icons.Rounded.Close,
+                                    contentDescription = "Remove",
+                                    modifier = Modifier
+                                        .clickable { viewModel.removeImageAt(i) }
+                                        .padding(10.dp)
+                                )
+                            }
 
-                                // 独立解混淆 (ArrowBack -> DECRYPT)
-                                Row(modifier = Modifier.clip(CircleShape)) {
-                                    Icon(
-                                        Icons.Rounded.ArrowBack,
-                                        contentDescription = "Decrypt",
-                                        modifier = Modifier
-                                            .clickable {
-                                                if (checkKeyValid()) {
-                                                    Toast.makeText(context, context.getString(R.string.start_decryption), Toast.LENGTH_SHORT).show()
-                                                    viewModel.processSingleImage(
-                                                        index = i,
-                                                        processType = ProcessType.DECRYPT,
-                                                        onFallbackToast = {
-                                                            Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
-                                                        },
-                                                        onFailedToast = {
-                                                            Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    )
-                                                }
+                            // 独立设置
+                            Row(modifier = Modifier.clip(CircleShape)) {
+                                Icon(
+                                    Icons.Rounded.Settings,
+                                    contentDescription = "Settings",
+                                    modifier = Modifier
+                                        .clickable { viewModel.isShowMethodAndKeySettingOnTopLayer = true }
+                                        .padding(10.dp)
+                                )
+                            }
+
+                            // 独立解混淆 (ArrowBack -> DECRYPT)
+                            Row(modifier = Modifier.clip(CircleShape)) {
+                                Icon(
+                                    Icons.Rounded.ArrowBack,
+                                    contentDescription = "Decrypt",
+                                    modifier = Modifier
+                                        .clickable {
+                                            if (checkKeyValid()) {
+                                                Toast.makeText(context, context.getString(R.string.start_decryption), Toast.LENGTH_SHORT).show()
+                                                viewModel.processSingleImage(
+                                                    index = i,
+                                                    processType = ProcessType.DECRYPT,
+                                                    onFallbackToast = {
+                                                        Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    onFailedToast = {
+                                                        Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                    }
+                                                )
                                             }
-                                            .padding(10.dp)
-                                    )
-                                }
+                                        }
+                                        .padding(10.dp)
+                                )
+                            }
 
-                                // 独立混淆 (ArrowForward -> ENCRYPT)
-                                Row(modifier = Modifier.clip(CircleShape)) {
-                                    Icon(
-                                        Icons.Rounded.ArrowForward,
-                                        contentDescription = "Encrypt",
-                                        modifier = Modifier
-                                            .clickable {
-                                                if (checkKeyValid()) {
-                                                    Toast.makeText(context, context.getString(R.string.start_encryption), Toast.LENGTH_SHORT).show()
-                                                    viewModel.processSingleImage(
-                                                        index = i,
-                                                        processType = ProcessType.ENCRYPT,
-                                                        onFallbackToast = {
-                                                            Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
-                                                        },
-                                                        onFailedToast = {
-                                                            Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    )
-                                                }
+                            // 独立混淆 (ArrowForward -> ENCRYPT)
+                            Row(modifier = Modifier.clip(CircleShape)) {
+                                Icon(
+                                    Icons.Rounded.ArrowForward,
+                                    contentDescription = "Encrypt",
+                                    modifier = Modifier
+                                        .clickable {
+                                            if (checkKeyValid()) {
+                                                Toast.makeText(context, context.getString(R.string.start_encryption), Toast.LENGTH_SHORT).show()
+                                                viewModel.processSingleImage(
+                                                    index = i,
+                                                    processType = ProcessType.ENCRYPT,
+                                                    onFallbackToast = {
+                                                        Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    onFailedToast = {
+                                                        Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                    }
+                                                )
                                             }
-                                            .padding(10.dp)
-                                    )
-                                }
+                                        }
+                                        .padding(10.dp)
+                                )
+                            }
 
-                                // 旋转 180 度
-                                Row(modifier = Modifier.clip(CircleShape)) {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.crop_rotate_119243),
-                                        contentDescription = "Rotate",
-                                        modifier = Modifier
-                                            .clickable { viewModel.rotateSingleImage(i) }
-                                            .padding(10.dp)
-                                    )
-                                }
+                            // 旋转 180 度
+                            Row(modifier = Modifier.clip(CircleShape)) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.crop_rotate_119243),
+                                    contentDescription = "Rotate",
+                                    modifier = Modifier
+                                        .clickable { viewModel.rotateSingleImage(i) }
+                                        .padding(10.dp)
+                                )
+                            }
 
-                                // 重新加载/重置
-                                Row(modifier = Modifier.clip(CircleShape)) {
-                                    Icon(
-                                        Icons.Rounded.Refresh,
-                                        contentDescription = "Reset",
-                                        modifier = Modifier
-                                            .clickable { viewModel.reloadSingleImage(i) }
-                                            .padding(10.dp)
-                                    )
-                                }
+                            // 重新加载/重置
+                            Row(modifier = Modifier.clip(CircleShape)) {
+                                Icon(
+                                    Icons.Rounded.Refresh,
+                                    contentDescription = "Reset",
+                                    modifier = Modifier
+                                        .clickable { viewModel.reloadSingleImage(i) }
+                                        .padding(10.dp)
+                                )
+                            }
 
-                                // 保存单张图片
-                                Row(modifier = Modifier.clip(CircleShape)) {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.import_download_icon_176152),
-                                        contentDescription = "Save",
-                                        modifier = Modifier
-                                            .clickable {
-                                                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-                                                    ContextCompat.checkSelfPermission(context, "android.permission.WRITE_EXTERNAL_STORAGE")
-                                                    != PackageManager.PERMISSION_GRANTED
-                                                ) {
-                                                    viewModel.isShowRequestWritePermissionDialog = true
-                                                    return@clickable
-                                                }
-
-                                                Toast.makeText(context, context.getString(R.string.start_saving), Toast.LENGTH_SHORT).show()
-                                                viewModel.saveSingleImage(i) { success ->
-                                                    Toast.makeText(
-                                                        context,
-                                                        if (success) context.getString(R.string.succeeded_save_image_toast)
-                                                        else context.getString(R.string.failed_save_image_toast),
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
-                                                }
+                            // 保存单张图片
+                            Row(modifier = Modifier.clip(CircleShape)) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.import_download_icon_176152),
+                                    contentDescription = "Save",
+                                    modifier = Modifier
+                                        .clickable {
+                                            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                                                ContextCompat.checkSelfPermission(context, "android.permission.WRITE_EXTERNAL_STORAGE")
+                                                != PackageManager.PERMISSION_GRANTED
+                                            ) {
+                                                viewModel.isShowRequestWritePermissionDialog = true
+                                                return@clickable
                                             }
-                                            .padding(10.dp)
-                                    )
-                                }
+
+                                            Toast.makeText(context, context.getString(R.string.start_saving), Toast.LENGTH_SHORT).show()
+                                            viewModel.saveSingleImage(i) { success ->
+                                                Toast.makeText(
+                                                    context,
+                                                    if (success) context.getString(R.string.succeeded_save_image_toast)
+                                                    else context.getString(R.string.failed_save_image_toast),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
+                                        .padding(10.dp)
+                                )
                             }
                         }
                     }
                 }
+            }
+
+            // 底部占位留白，防止被悬浮按钮挡住
+            item(key = "footer_spacer") {
+                Spacer(modifier = Modifier.height(100.dp))
             }
         }
 
@@ -524,7 +552,7 @@ fun EncryptScreen(
                             .size(40.dp)
                             .clickable {
                                 coroutineScope.launch {
-                                    scrollState.animateScrollTo(0, TweenSpec(800))
+                                    listState.animateScrollToItem(0)
                                 }
                             }
                     )

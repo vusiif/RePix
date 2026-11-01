@@ -111,6 +111,47 @@ class SteganographyHelperTest {
     }
 
     @Test
+    fun testPngIendDetectionResistsFakeInternalMagic() {
+        // Construct a valid minimal PNG header + IEND chunk, with fake PK\x03\x04 inside a preceding IDAT
+        val pngFile = tempFolder.newFile("fake_magic.png")
+        val stegoFile = tempFolder.newFile("fake_magic_stego.png")
+        val extractedFile = tempFolder.newFile("extracted_real.zip")
+
+        FileOutputStream(pngFile).use { fos ->
+            // PNG Signature (8 bytes)
+            fos.write(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+            // Dummy IDAT Chunk containing fake PK\x03\x04
+            val idatData = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0x11, 0x22, 0x33, 0x44)
+            fos.write(byteArrayOf(0, 0, 0, idatData.size.toByte())) // Length
+            fos.write("IDAT".toByteArray(Charsets.US_ASCII)) // Type
+            fos.write(idatData) // Data
+            fos.write(byteArrayOf(0x12, 0x34, 0x56, 0x78)) // Dummy CRC
+            // IEND Chunk
+            fos.write(byteArrayOf(0, 0, 0, 0)) // Length = 0
+            fos.write("IEND".toByteArray(Charsets.US_ASCII)) // Type
+            fos.write(byteArrayOf(0xAE.toByte(), 0x42, 0x60, 0x82.toByte())) // Valid IEND CRC
+        }
+        val pngEndOffset = pngFile.length()
+
+        // Real ZIP appended after PNG
+        val realZipBytes = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0x99.toByte(), 0x88.toByte())
+        val dummyZipFile = tempFolder.newFile("real.zip")
+        FileOutputStream(dummyZipFile).use { it.write(realZipBytes) }
+
+        SteganographyHelper.createStegoImage(pngFile, dummyZipFile, stegoFile)
+
+        // Should detect real zip at pngEndOffset, NOT the fake PK\x03\x04 inside IDAT
+        val detection = SteganographyHelper.detectArchiveOffset(stegoFile)
+        assertNotNull(detection)
+        assertEquals(SteganographyHelper.ArchiveType.ZIP, detection!!.type)
+        assertEquals(pngEndOffset, detection.offset)
+
+        val extracted = SteganographyHelper.extractArchive(stegoFile, extractedFile)
+        assertTrue(extracted)
+        assertArrayEquals(realZipBytes, extractedFile.readBytes())
+    }
+
+    @Test
     fun testPureImageWithoutArchiveReturnsNull() {
         val imageFile = tempFolder.newFile("plain.png")
         val imageBytes = ByteArray(16 * 1024)

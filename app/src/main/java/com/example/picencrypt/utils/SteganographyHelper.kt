@@ -24,6 +24,7 @@ object SteganographyHelper {
     private val RAR4_MAGIC = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00)
     private val RAR5_MAGIC = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00)
     private val SEVEN_Z_MAGIC = byteArrayOf(0x37, 0x7A, 0xBC.toByte(), 0xAF.toByte(), 0x27, 0x1C)
+    private val PNG_MAGIC = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
 
     /**
      * 将压缩包直接追加到图片文件的末尾（生成“图种”文件）
@@ -73,16 +74,79 @@ object SteganographyHelper {
     }
 
     /**
-     * 扫描文件，检测末尾是否藏有压缩包特征码并返回其文件偏移量及类型
+     * 智能扫描文件，优先通过 PNG IEND / JPEG EOI 定位真实图片结束边界，
+     * 避免图片内部压缩数据随机特征码假阳性（P0-3 优化）
      */
     fun detectArchiveOffset(stegoFile: File): DetectionResult? {
         if (!stegoFile.exists() || stegoFile.length() < 32) return null
 
-        val fileSize = stegoFile.length()
-        // 图种通常在图片末尾追加，我们以滑动窗口流式匹配 magic
-        FileInputStream(stegoFile).use { fis ->
+        // 1. 尝试通过标准容器头部定位精确文件尾
+        val pngEnd = findPngImageEnd(stegoFile)
+        val searchStartOffset = when {
+            pngEnd != null && pngEnd < stegoFile.length() -> pngEnd
+            else -> 16L // 通用兜底，避开最前导 Header
+        }
+
+        // 2. 从目标起始偏移开始进行特征码搜索
+        return scanForArchive(stegoFile, searchStartOffset)
+    }
+
+    /**
+     * 沿 PNG Chunk 链精准寻找 IEND 块结束偏移量
+     */
+    fun findPngImageEnd(file: File): Long? {
+        if (file.length() < 24) return null
+        return try {
+            FileInputStream(file).use { fis ->
+                val header = ByteArray(8)
+                if (fis.read(header) != 8 || !header.contentEquals(PNG_MAGIC)) return null
+
+                var currentOffset = 8L
+                val chunkHeader = ByteArray(8)
+                while (true) {
+                    val read = fis.read(chunkHeader)
+                    if (read < 8) break
+                    currentOffset += 8
+
+                    val length = ((chunkHeader[0].toInt() and 0xFF) shl 24) or
+                            ((chunkHeader[1].toInt() and 0xFF) shl 16) or
+                            ((chunkHeader[2].toInt() and 0xFF) shl 8) or
+                            (chunkHeader[3].toInt() and 0xFF)
+                    val type = String(chunkHeader, 4, 4, Charsets.US_ASCII)
+
+                    if (type == "IEND") {
+                        // IEND 数据长度为 0，后面跟 4 字节 CRC
+                        return currentOffset + length.toLong() + 4L
+                    }
+
+                    val skipBytes = length.toLong() + 4L // 数据 + CRC
+                    var skipped = 0L
+                    while (skipped < skipBytes) {
+                        val s = fis.skip(skipBytes - skipped)
+                        if (s <= 0) break
+                        skipped += s
+                    }
+                    currentOffset += skipBytes
+                }
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun scanForArchive(file: File, startOffset: Long): DetectionResult? {
+        FileInputStream(file).use { fis ->
+            // 跳过图片前置数据
+            var skipped = 0L
+            while (skipped < startOffset) {
+                val s = fis.skip(startOffset - skipped)
+                if (s <= 0) break
+                skipped += s
+            }
+
             val buffer = ByteArray(64 * 1024)
-            var currentPos = 0L
+            var currentPos = startOffset
             var prevOverlap = ByteArray(0)
 
             while (true) {
@@ -98,17 +162,13 @@ object SteganographyHelper {
                     buffer.copyOf(read)
                 }
 
-                // 避免在文件最开头就把纯 zip 误判为图种（图种至少有图片数据）
-                val searchStart = if (currentPos == 0L) 16 else 0
-
-                val found = findFirstMagic(combined, searchStart)
+                val found = findFirstMagic(combined, 0)
                 if (found != null) {
                     val relativeOffset = found.second
                     val actualOffset = (currentPos - prevOverlap.size) + relativeOffset
                     return DetectionResult(found.first, actualOffset)
                 }
 
-                // 保留尾部 16 字节以防 magic 跨缓冲区
                 val overlapLen = minOf(16, read)
                 prevOverlap = buffer.copyOfRange(read - overlapLen, read)
                 currentPos += read
