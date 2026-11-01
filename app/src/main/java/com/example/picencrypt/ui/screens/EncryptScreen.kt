@@ -30,9 +30,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Refresh
@@ -52,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
 import java.util.Locale
+import androidx.compose.ui.text.intl.Locale as ComposeLocale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -405,7 +406,7 @@ fun EncryptScreen(
                                             color = if (isScrambled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                         Text(
-                                            text = String.format(Locale.getDefault(), "%.1f%% (%s)", metrics.scrambleScore, if (isScrambled) "高强混淆" else "原图特征"),
+                                            text = String.format(ComposeLocale.current.platformLocale, "%.1f%% (%s)", metrics.scrambleScore, if (isScrambled) "高强混淆" else "原图特征"),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (isScrambled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
@@ -454,12 +455,12 @@ fun EncryptScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
                                             Text(
-                                                text = String.format(Locale.getDefault(), "香农信息熵: %.2f / 8.0 bits", metrics.entropy),
+                                                text = String.format(ComposeLocale.current.platformLocale, "香农信息熵: %.2f / 8.0 bits", metrics.entropy),
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
                                             Text(
-                                                text = String.format(Locale.getDefault(), "相邻相关度: %.3f", metrics.correlation),
+                                                text = String.format(ComposeLocale.current.platformLocale, "相邻相关度: %.3f", metrics.correlation),
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
@@ -502,7 +503,7 @@ fun EncryptScreen(
                             // 独立解混淆 (ArrowBack -> DECRYPT)
                             Row(modifier = Modifier.clip(CircleShape)) {
                                 Icon(
-                                    Icons.Rounded.ArrowBack,
+                                    Icons.AutoMirrored.Rounded.ArrowBack,
                                     contentDescription = "Decrypt",
                                     modifier = Modifier
                                         .clickable {
@@ -527,7 +528,7 @@ fun EncryptScreen(
                             // 独立混淆 (ArrowForward -> ENCRYPT)
                             Row(modifier = Modifier.clip(CircleShape)) {
                                 Icon(
-                                    Icons.Rounded.ArrowForward,
+                                    Icons.AutoMirrored.Rounded.ArrowForward,
                                     contentDescription = "Encrypt",
                                     modifier = Modifier
                                         .clickable {

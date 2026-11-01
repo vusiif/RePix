@@ -5,6 +5,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,7 +27,7 @@ import java.io.FileNotFoundException
 class MainViewModel : ViewModel() {
 
     // ---------------- 导航与弹窗全局状态 ----------------
-    var currentTab by mutableStateOf(0)
+    var currentTab by mutableIntStateOf(0)
     var isShowInfo by mutableStateOf(false)
     var isShowRequestWritePermissionDialog by mutableStateOf(false)
     var isShowMethodAndKeySettingOnTopLayer by mutableStateOf(false)
@@ -36,21 +39,21 @@ class MainViewModel : ViewModel() {
     var isCompatMode by mutableStateOf(false)
     var isDropdownMenuExpanded by mutableStateOf(false)
 
-    var progress by mutableStateOf(0f)
+    var progress by mutableFloatStateOf(0f)
     var isShowProgress by mutableStateOf(false)
-    var newImageUriCount by mutableStateOf(0)
+    var newImageUriCount by mutableIntStateOf(0)
 
     // ---------------- Tab 1: 图种隐写状态 ----------------
-    var stegoMode by mutableStateOf(0)
+    var stegoMode by mutableIntStateOf(0)
     var stegoCoverUri by mutableStateOf<Uri?>(null)
     var stegoArchiveUri by mutableStateOf<Uri?>(null)
     var stegoCoverThumbnail by mutableStateOf<Bitmap?>(null)
-    var stegoCoverFileSize by mutableStateOf(0L)
-    var stegoArchiveFileSize by mutableStateOf(0L)
+    var stegoCoverFileSize by mutableLongStateOf(0L)
+    var stegoArchiveFileSize by mutableLongStateOf(0L)
 
     var stegoExtractTargetUri by mutableStateOf<Uri?>(null)
     var stegoExtractThumbnail by mutableStateOf<Bitmap?>(null)
-    var stegoExtractFileSize by mutableStateOf(0L)
+    var stegoExtractFileSize by mutableLongStateOf(0L)
     var stegoInspection by mutableStateOf<SteganographyHelper.StegoInspection?>(null)
     var isStegoInspecting by mutableStateOf(false)
     var isStegoProcessing by mutableStateOf(false)
@@ -62,7 +65,7 @@ class MainViewModel : ViewModel() {
     var mirageCoverThumbnail by mutableStateOf<Bitmap?>(null)
     var mirageHiddenThumbnail by mutableStateOf<Bitmap?>(null)
     var miragePreviewBitmap by mutableStateOf<Bitmap?>(null)
-    var mirageBgMode by mutableStateOf(0) // 0: 白底, 1: 黑底, 2: 棋盘格
+    var mirageBgMode by mutableIntStateOf(0) // 0: 白底, 1: 黑底, 2: 棋盘格
     var isMirageProcessing by mutableStateOf(false)
 
     // ---------------- 业务方法：图片混淆 ----------------
