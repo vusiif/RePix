@@ -278,12 +278,16 @@ class MyImage(
         thumbnail = loadThumbnailFromUri()
     }
 
-    fun saveWithDetail(index: Int = 0): SaveResult {
+    fun saveWithDetail(
+        index: Int = 0,
+        format: ImageExportFormat = ImageExportFormat.PNG,
+        quality: Int = format.defaultQuality
+    ): SaveResult {
         val dateTime = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         var ms = System.currentTimeMillis()
         ms -= ms / 1000 * 1000 + index
         val s = String.format(Locale.US, "%03d", ms)
-        val imageName = "PicEncrypt_${dateTime + s}.png"
+        val imageName = "PicEncrypt_${dateTime + s}.${format.extension}"
         val appName = appContext.getString(R.string.app_name)
         val saveDir = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
@@ -292,10 +296,11 @@ class MyImage(
 
         return try {
             val currentBmp = bitmap
+            val compressFormat = format.getCompressFormat()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, imageName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                    put(MediaStore.MediaColumns.MIME_TYPE, format.mimeType)
                     put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/$appName")
                 }
                 val insertUri = appContext.contentResolver.insert(
@@ -304,7 +309,7 @@ class MyImage(
                 ) ?: return SaveResult.Failure(appContext.getString(R.string.save_failed_mediastore))
 
                 val written = appContext.contentResolver.openOutputStream(insertUri)?.use { out ->
-                    currentBmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    currentBmp.compress(compressFormat, quality, out)
                 } ?: false
 
                 if (written) SaveResult.Success else SaveResult.Failure(appContext.getString(R.string.save_failed_io))
@@ -314,7 +319,7 @@ class MyImage(
                 }
                 val filePath = File(saveDir, imageName)
                 FileOutputStream(filePath).use { out ->
-                    currentBmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    currentBmp.compress(compressFormat, quality, out)
                     out.flush()
                 }
                 appContext.sendBroadcast(

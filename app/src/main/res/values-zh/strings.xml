@@ -123,4 +123,10 @@
     <string name="safe_security_notice">⚠️ 本功能采用 AES-256-GCM 密码学认证加密与 PBKDF2 15000 次密钥派生。加密后任何人（包括开发者）均无法无密码破解，请务必牢记密码！</string>
     <string name="safe_inspect_orig_name">原始文件名</string>
     <string name="safe_inspect_orig_size">解密后大小</string>
+
+    <!-- 导出格式设置文案 -->
+    <string name="export_format_label">图片导出格式</string>
+    <string name="export_format_png">PNG (无损高保真)</string>
+    <string name="export_format_webp">WebP (无损省空间)</string>
+    <string name="export_format_jpeg">JPEG (高兼容压缩)</string>
 </resources>

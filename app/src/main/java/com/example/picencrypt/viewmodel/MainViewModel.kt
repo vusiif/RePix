@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.picencrypt.model.Algorithm
+import com.example.picencrypt.model.ImageExportFormat
 import com.example.picencrypt.model.MyImage
 import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.CryptoUtils
@@ -41,6 +42,7 @@ class MainViewModel : ViewModel() {
     var keyString by mutableStateOf("1")
     var isCompatMode by mutableStateOf(false)
     var isDropdownMenuExpanded by mutableStateOf(false)
+    var exportFormat by mutableStateOf(ImageExportFormat.PNG)
 
     var progress by mutableFloatStateOf(0f)
     var isShowProgress by mutableStateOf(false)
@@ -243,7 +245,7 @@ class MainViewModel : ViewModel() {
             var failCount = 0
             for (i in snapshot.indices) {
                 if (!isActive) break
-                val ok = snapshot[i].save(i)
+                val ok = snapshot[i].saveWithDetail(i, format = exportFormat) is com.example.picencrypt.model.SaveResult.Success
                 if (ok) successCount++ else failCount++
                 progress = (i + 1).toFloat() / snapshot.size
             }
@@ -301,7 +303,7 @@ class MainViewModel : ViewModel() {
         if (index !in images.indices) return
         val item = images[index]
         viewModelScope.launch(Dispatchers.IO) {
-            val result = item.save(index)
+            val result = item.saveWithDetail(index, format = exportFormat) is com.example.picencrypt.model.SaveResult.Success
             withContext(Dispatchers.Main) {
                 onComplete(result)
             }
