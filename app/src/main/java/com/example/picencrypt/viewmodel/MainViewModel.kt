@@ -16,6 +16,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.picencrypt.model.Algorithm
 import com.example.picencrypt.model.MyImage
 import com.example.picencrypt.utils.FileUtils
+import com.example.picencrypt.utils.CryptoUtils
 import com.example.picencrypt.utils.SteganographyHelper
 import com.example.picencrypt.utils.ImageScramble.ProcessType
 import com.example.picencrypt.utils.MirageTankBridge
@@ -70,6 +71,15 @@ class MainViewModel : ViewModel() {
     var miragePreviewBitmap by mutableStateOf<Bitmap?>(null)
     var mirageBgMode by mutableIntStateOf(0) // 0: 白底, 1: 黑底, 2: 棋盘格
     var isMirageProcessing by mutableStateOf(false)
+
+    // ---------------- Tab 3: 安全保险箱状态 (AES-256-GCM) ----------------
+    var safeMode by mutableIntStateOf(0) // 0: 加密为 .rpx, 1: 解密 .rpx
+    var safePassword by mutableStateOf("")
+    var safeSourceUri by mutableStateOf<Uri?>(null)
+    var safeSourceFileName by mutableStateOf("")
+    var safeSourceFileSize by mutableLongStateOf(0L)
+    var safeRpxHeader by mutableStateOf<CryptoUtils.RpxHeader?>(null)
+    var isSafeProcessing by mutableStateOf(false)
 
     // ---------------- 业务方法：图片混淆 ----------------
 
@@ -513,6 +523,143 @@ class MainViewModel : ViewModel() {
                         isMirageProcessing = false
                         onResult(false)
                     }
+                }
+            }
+        }
+    }
+
+    // ---------------- 业务方法：安全保险箱 (AES-256-GCM) ----------------
+
+    fun setSafeSourceFile(uri: Uri?, context: Context) {
+        safeSourceUri = uri
+        if (uri == null) {
+            safeSourceFileName = ""
+            safeSourceFileSize = 0L
+            safeRpxHeader = null
+            return
+        }
+        val name = FileUtils.getUriFilename(context, uri)
+        val size = FileUtils.getUriFileSize(context, uri)
+        safeSourceFileName = name
+        safeSourceFileSize = size
+
+        if (safeMode == 1 || name.endsWith(".rpx", ignoreCase = true)) {
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        val header = CryptoUtils.inspectHeader(input)
+                        withContext(Dispatchers.Main) {
+                            safeRpxHeader = header
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        } else {
+            safeRpxHeader = null
+        }
+    }
+
+    fun executeSafeEncryption(
+        context: Context,
+        onResult: (success: Boolean, message: String) -> Unit
+    ) {
+        val uri = safeSourceUri ?: return
+        val pwd = safePassword
+        if (pwd.length < 6) {
+            onResult(false, context.getString(com.example.picencrypt.R.string.safe_password_hint))
+            return
+        }
+
+        isSafeProcessing = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val inputBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (inputBytes == null || inputBytes.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        isSafeProcessing = false
+                        onResult(false, context.getString(com.example.picencrypt.R.string.file_not_found))
+                    }
+                    return@launch
+                }
+
+                val origName = safeSourceFileName.ifEmpty { "file" }
+                val outName = "${origName}.rpx"
+                val encryptedBytes = CryptoUtils.encryptBytes(inputBytes, pwd.toCharArray(), origName)
+
+                val saved = FileUtils.saveBytesToDownload(context, outName, encryptedBytes)
+                withContext(Dispatchers.Main) {
+                    isSafeProcessing = false
+                    if (saved) {
+                        onResult(true, context.getString(com.example.picencrypt.R.string.safe_encrypt_success))
+                    } else {
+                        onResult(false, context.getString(com.example.picencrypt.R.string.stego_failed))
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    isSafeProcessing = false
+                    onResult(false, e.localizedMessage ?: context.getString(com.example.picencrypt.R.string.stego_failed))
+                }
+            }
+        }
+    }
+
+    fun executeSafeDecryption(
+        context: Context,
+        onResult: (success: Boolean, message: String) -> Unit
+    ) {
+        val uri = safeSourceUri ?: return
+        val pwd = safePassword
+        if (pwd.isEmpty()) {
+            onResult(false, context.getString(com.example.picencrypt.R.string.safe_password_hint))
+            return
+        }
+
+        isSafeProcessing = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val encryptedBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (encryptedBytes == null || encryptedBytes.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        isSafeProcessing = false
+                        onResult(false, context.getString(com.example.picencrypt.R.string.file_not_found))
+                    }
+                    return@launch
+                }
+
+                val decryptResult = CryptoUtils.decryptBytes(encryptedBytes, pwd.toCharArray())
+                when (decryptResult) {
+                    is CryptoUtils.DecryptResult.Success -> {
+                        val outName = decryptResult.originalFilename.ifEmpty { "decrypted_file" }
+                        val saved = FileUtils.saveBytesToDownload(context, outName, decryptResult.plainBytes)
+                        withContext(Dispatchers.Main) {
+                            isSafeProcessing = false
+                            if (saved) {
+                                onResult(true, context.getString(com.example.picencrypt.R.string.safe_decrypt_success))
+                            } else {
+                                onResult(false, context.getString(com.example.picencrypt.R.string.stego_failed))
+                            }
+                        }
+                    }
+                    is CryptoUtils.DecryptResult.WrongPasswordOrCorrupted -> {
+                        withContext(Dispatchers.Main) {
+                            isSafeProcessing = false
+                            onResult(false, context.getString(com.example.picencrypt.R.string.safe_decrypt_wrong_password))
+                        }
+                    }
+                    is CryptoUtils.DecryptResult.InvalidFormat -> {
+                        withContext(Dispatchers.Main) {
+                            isSafeProcessing = false
+                            onResult(false, context.getString(com.example.picencrypt.R.string.safe_decrypt_invalid_format))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    isSafeProcessing = false
+                    onResult(false, e.localizedMessage ?: context.getString(com.example.picencrypt.R.string.stego_failed))
                 }
             }
         }

@@ -51,6 +51,7 @@
     <string name="tab_encrypt">图片混淆</string>
     <string name="tab_stego">图种隐写</string>
     <string name="tab_mirage">幻影坦克</string>
+    <string name="tab_safe">安全保险箱</string>
     <string name="settings_title">参数与设置</string>
 
     <!-- 图种隐写工具文案 -->
@@ -102,4 +103,24 @@
     <string name="mirage_hint_checker">🏁 透明通道：展示 PNG 原始 Alpha 半透明像素分布</string>
     <string name="mirage_success">幻影坦克已成功保存至相册 (Pictures/RePix)！</string>
     <string name="mirage_failed">处理失败，请确认图片有效且可读取</string>
+
+    <!-- 安全保险箱 (AES-256-GCM 强加密) 文案 -->
+    <string name="safe_tool_title">安全保险箱 (AES-256-GCM)</string>
+    <string name="safe_encrypt_mode">🔒 加密为 .rpx 文件</string>
+    <string name="safe_decrypt_mode">🔓 解密 .rpx 文件</string>
+    <string name="safe_select_file_to_encrypt">选择待加密文件 (图片/视频/文档)</string>
+    <string name="safe_select_file_to_decrypt">选择待解密 .rpx 文件</string>
+    <string name="safe_selected_file">已选文件</string>
+    <string name="safe_file_size">文件大小</string>
+    <string name="safe_password_label">安全保护密码</string>
+    <string name="safe_password_hint">请输入安全密码 (建议6位以上)</string>
+    <string name="safe_btn_encrypt">一键高强度加密并导出</string>
+    <string name="safe_btn_decrypt">一键验证并解密还原</string>
+    <string name="safe_encrypt_success">文件已成功加密为 .rpx 并保存至下载目录 (Download/RePix)！</string>
+    <string name="safe_decrypt_success">文件已成功解密还原至下载目录 (Download/RePix)！</string>
+    <string name="safe_decrypt_wrong_password">解密失败：密码错误或文件已损坏！</string>
+    <string name="safe_decrypt_invalid_format">该文件不是有效的 RePix (.rpx) 加密容器！</string>
+    <string name="safe_security_notice">⚠️ 本功能采用 AES-256-GCM 密码学认证加密与 PBKDF2 15000 次密钥派生。加密后任何人（包括开发者）均无法无密码破解，请务必牢记密码！</string>
+    <string name="safe_inspect_orig_name">原始文件名</string>
+    <string name="safe_inspect_orig_size">解密后大小</string>
 </resources>

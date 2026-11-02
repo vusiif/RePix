@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -50,6 +51,7 @@ import com.example.picencrypt.ui.components.AppAboutDialog
 import com.example.picencrypt.ui.components.MethodAndKeySettings
 import com.example.picencrypt.ui.screens.EncryptScreen
 import com.example.picencrypt.ui.screens.MirageScreen
+import com.example.picencrypt.ui.screens.SafeScreen
 import com.example.picencrypt.ui.screens.StegoScreen
 import com.example.picencrypt.ui.theme.PicEncryptTheme
 import com.example.picencrypt.viewmodel.MainViewModel
@@ -152,6 +154,18 @@ fun MainApp(
                         },
                         label = { Text(text = stringResource(id = R.string.tab_mirage)) }
                     )
+                    NavigationBarItem(
+                        selected = viewModel.currentTab == 3,
+                        onClick = { viewModel.currentTab = 3 },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.Lock,
+                                contentDescription = stringResource(id = R.string.tab_safe),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        },
+                        label = { Text(text = stringResource(id = R.string.tab_safe)) }
+                    )
                 }
             }
         ) { paddingValues ->
@@ -165,6 +179,7 @@ fun MainApp(
                     0 -> EncryptScreen(viewModel = viewModel)
                     1 -> StegoScreen(viewModel = viewModel)
                     2 -> MirageScreen(viewModel = viewModel)
+                    3 -> SafeScreen(viewModel = viewModel)
                 }
 
                 // 顶层全局设置弹层

@@ -60,10 +60,8 @@ object FileUtils {
                 }
                 val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
                 context.contentResolver.openOutputStream(uri)?.use { out ->
-                    val coverIn = context.contentResolver.openInputStream(coverUri) ?: return false
-                    val archIn = context.contentResolver.openInputStream(archiveUri) ?: return false
-                    coverIn.use { cIn ->
-                        archIn.use { aIn ->
+                    context.contentResolver.openInputStream(coverUri)?.use { cIn ->
+                        context.contentResolver.openInputStream(archiveUri)?.use { aIn ->
                             SteganographyHelper.createStegoImage(cIn, aIn, out)
                         }
                     }
@@ -73,10 +71,8 @@ object FileUtils {
                 if (!saveDir.exists()) saveDir.mkdirs()
                 val outFile = File(saveDir, fileName)
                 FileOutputStream(outFile).use { out ->
-                    val coverIn = context.contentResolver.openInputStream(coverUri) ?: return false
-                    val archIn = context.contentResolver.openInputStream(archiveUri) ?: return false
-                    coverIn.use { cIn ->
-                        archIn.use { aIn ->
+                    context.contentResolver.openInputStream(coverUri)?.use { cIn ->
+                        context.contentResolver.openInputStream(archiveUri)?.use { aIn ->
                             SteganographyHelper.createStegoImage(cIn, aIn, out)
                         }
                     }
@@ -141,6 +137,39 @@ object FileUtils {
             null
         } finally {
             if (cacheFile.exists()) cacheFile.delete()
+        }
+    }
+
+    /**
+     * 保存字节数据至系统公共 Download/RePix 目录
+     */
+    fun saveBytesToDownload(context: Context, fileName: String, bytes: ByteArray): Boolean {
+        val appName = context.getString(R.string.app_name)
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/$appName")
+                }
+                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(bytes)
+                    out.flush()
+                } ?: return false
+            } else {
+                val saveDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), appName)
+                if (!saveDir.exists()) saveDir.mkdirs()
+                val outFile = File(saveDir, fileName)
+                FileOutputStream(outFile).use { out ->
+                    out.write(bytes)
+                    out.flush()
+                }
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
     }
 
