@@ -13,6 +13,8 @@ import android.os.Environment
 import android.provider.MediaStore
 import com.example.picencrypt.R
 import com.example.picencrypt.utils.BlockScramble
+import com.example.picencrypt.utils.ImageMetrics
+import com.example.picencrypt.utils.ImageMetricsHelper
 import com.example.picencrypt.utils.ImageScramble.Image
 import com.example.picencrypt.utils.ImageScramble.ProcessType
 import com.example.picencrypt.utils.NativeImageScramble
@@ -21,8 +23,6 @@ import com.example.picencrypt.utils.PerPixelScramble
 import com.example.picencrypt.utils.PicEncryptRowColumnScramble
 import com.example.picencrypt.utils.PicEncryptRowScramble
 import com.example.picencrypt.utils.RowPixelScramble
-import com.example.picencrypt.utils.ImageMetrics
-import com.example.picencrypt.utils.ImageMetricsHelper
 import com.example.picencrypt.utils.TomatoScramble
 import java.io.File
 import java.io.FileOutputStream
@@ -36,21 +36,66 @@ class MyImage(
     context: Context,
     val id: String = UUID.randomUUID().toString()
 ) {
-    // 强制使用 Application Context，彻底规避 Activity 内存泄露 (P1-4)
+    // Enforce Application Context to avoid Activity leakage (P1-4)
     private val appContext: Context = context.applicationContext
 
     var filename: String
-    var bitmap: Bitmap
     var thumbnail: Bitmap
     private var cachedMetrics: ImageMetrics? = null
 
+    var originalWidth: Int = 0
+        private set
+    var originalHeight: Int = 0
+        private set
+
+    private var _bitmap: Bitmap? = null
+
+    /**
+     * Lazy on-demand decode for full-size bitmap.
+     * Prevents out-of-memory errors when importing multiple high-resolution photos (P0-1 / P0-2).
+     */
+    var bitmap: Bitmap
+        get() {
+            var b = _bitmap
+            if (b == null || b.isRecycled) {
+                b = loadFullBitmap()
+                _bitmap = b
+            }
+            return b
+        }
+        set(value) {
+            _bitmap = value
+            originalWidth = value.width
+            originalHeight = value.height
+        }
+
     init {
         filename = loadFilename()
-        bitmap = appContext.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it)
-        } ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        inspectDimensions()
         thumbnail = loadThumbnailFromUri()
     }
+
+    private fun inspectDimensions() {
+        val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        try {
+            appContext.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, boundsOptions)
+            }
+            originalWidth = boundsOptions.outWidth.coerceAtLeast(0)
+            originalHeight = boundsOptions.outHeight.coerceAtLeast(0)
+        } catch (_: Exception) {}
+    }
+
+    private fun loadFullBitmap(): Bitmap {
+        val loaded = appContext.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it)
+        } ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        originalWidth = loaded.width
+        originalHeight = loaded.height
+        return loaded
+    }
+
+    fun isBitmapLoaded(): Boolean = _bitmap?.isRecycled == false
 
     fun loadFilename(): String {
         var name = ""
@@ -71,7 +116,7 @@ class MyImage(
     }
 
     /**
-     * 首次或重载时从 URI 降采样解码缩略图 (P0-1)
+     * Decode thumbnail on initial load or reload with downsampling (P0-1)
      */
     fun loadThumbnailFromUri(maxSize: Int = 400): Bitmap {
         val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -93,16 +138,16 @@ class MyImage(
             }
             appContext.contentResolver.openInputStream(uri)?.use {
                 BitmapFactory.decodeStream(it, null, decodeOptions)
-            } ?: bitmap
+            } ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
         } else {
-            bitmap
+            Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
         }
 
         return createThumbnailFromBitmap(sampledBitmap, maxSize)
     }
 
     /**
-     * 从当前最新的内存 Bitmap 生成缩略图（处理/旋转后调用，零磁盘 I/O，保证混淆缩略图与直方图真实更新）
+     * Create thumbnail directly from the current in-memory bitmap (zero disk I/O, keeps thumbnail and metrics updated)
      */
     fun createThumbnailFromBitmap(src: Bitmap, maxSize: Int = 400): Bitmap {
         val ratio: Float = if (src.width > src.height) {
@@ -116,7 +161,7 @@ class MyImage(
     }
 
     /**
-     * 兼容接口：默认直接基于当前内存 bitmap 创建最新缩略图
+     * Backward-compatible helper: extracts thumbnail from current bitmap
      */
     fun loadThumbnail(): Bitmap = createThumbnailFromBitmap(bitmap)
 
@@ -127,7 +172,7 @@ class MyImage(
         forceCompat: Boolean = false,
         onFallback: (() -> Unit)? = null
     ): Boolean {
-        // LCG_SHUFFLE: Direct Zero-Copy in-place processing on Bitmap, 严格判定 JNI 返回值 (P0-2)
+        // LCG_SHUFFLE: Direct Zero-Copy in-place processing on Bitmap, strictly check JNI result (P0-2)
         if (algorithm == Algorithm.LCG_SHUFFLE) {
             if (!NativeShuffleBridge.isAvailable()) {
                 return false
@@ -142,8 +187,9 @@ class MyImage(
             return true
         }
 
-        val pixels = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        val currentBmp = bitmap
+        val pixels = IntArray(currentBmp.width * currentBmp.height)
+        currentBmp.getPixels(pixels, 0, currentBmp.width, 0, 0, currentBmp.width, currentBmp.height)
         val algoCode = when (algorithm) {
             Algorithm.TOMATO -> 0
             Algorithm.BLOCK -> 1
@@ -160,7 +206,7 @@ class MyImage(
         // Default: Use C++ Native Engine
         if (!forceCompat && NativeImageScramble.isAvailable()) {
             try {
-                image = NativeImageScramble.process(pixels, bitmap.width, bitmap.height, algoCode, processType, key)
+                image = NativeImageScramble.process(pixels, currentBmp.width, currentBmp.height, algoCode, processType, key)
             } catch (t: Throwable) {
                 image = null
             }
@@ -172,7 +218,7 @@ class MyImage(
                 didFallback = true
             }
             try {
-                val fallbackImage = Image(pixels, bitmap.width, bitmap.height)
+                val fallbackImage = Image(pixels, currentBmp.width, currentBmp.height)
                 image = when (algorithm) {
                     Algorithm.TOMATO -> TomatoScramble(fallbackImage, key.toDoubleOrNull() ?: 1.0).process(processType)
                     Algorithm.BLOCK -> BlockScramble(fallbackImage, key).process(processType)
@@ -206,18 +252,18 @@ class MyImage(
     }
 
     fun rotate(degree: Float) {
+        val current = bitmap
         val matrix = Matrix()
         matrix.setRotate(degree)
-        bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        bitmap = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
         cachedMetrics = null
         thumbnail = createThumbnailFromBitmap(bitmap)
     }
 
     fun reload() {
         filename = loadFilename()
-        bitmap = appContext.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it)
-        } ?: bitmap
+        _bitmap = null // Release in-memory modified bitmap
+        inspectDimensions()
         cachedMetrics = null
         thumbnail = loadThumbnailFromUri()
     }
@@ -235,6 +281,7 @@ class MyImage(
         )
 
         return try {
+            val currentBmp = bitmap
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, imageName)
@@ -247,7 +294,7 @@ class MyImage(
                 ) ?: return false
 
                 appContext.contentResolver.openOutputStream(insertUri)?.use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    currentBmp.compress(Bitmap.CompressFormat.PNG, 100, out)
                 } ?: false
             } else {
                 if (!saveDir.exists()) {
@@ -255,7 +302,7 @@ class MyImage(
                 }
                 val filePath = File(saveDir, imageName)
                 FileOutputStream(filePath).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    currentBmp.compress(Bitmap.CompressFormat.PNG, 100, out)
                     out.flush()
                 }
                 appContext.sendBroadcast(

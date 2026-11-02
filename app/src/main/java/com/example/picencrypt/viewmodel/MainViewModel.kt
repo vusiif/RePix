@@ -20,6 +20,8 @@ import com.example.picencrypt.utils.SteganographyHelper
 import com.example.picencrypt.utils.ImageScramble.ProcessType
 import com.example.picencrypt.utils.MirageTankBridge
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
@@ -113,6 +115,15 @@ class MainViewModel : ViewModel() {
         images.clear()
     }
 
+    private var batchProcessJob: Job? = null
+    private var batchSaveJob: Job? = null
+
+    fun cancelCurrentBatchTask() {
+        batchProcessJob?.cancel()
+        batchSaveJob?.cancel()
+        isShowProgress = false
+    }
+
     fun processAllImages(
         processType: ProcessType,
         onFallbackToast: () -> Unit,
@@ -125,7 +136,7 @@ class MainViewModel : ViewModel() {
         val compatSnapshot = isCompatMode
         val typeSnapshot = processType
 
-        viewModelScope.launch(Dispatchers.Default) {
+        batchProcessJob = viewModelScope.launch(Dispatchers.Default) {
             isShowProgress = true
             progress = 0f
             // 集合与参数双重快照保护，避免遍历中参数修改引发混淆状态污染 (P1-2)
@@ -133,6 +144,7 @@ class MainViewModel : ViewModel() {
             var successCount = 0
             var failCount = 0
             for (i in snapshot.indices) {
+                if (!isActive) break
                 val item = snapshot[i]
                 var hadFallback = false
                 val success = item.process(
@@ -212,14 +224,15 @@ class MainViewModel : ViewModel() {
     }
 
     fun saveAllImages(onComplete: (successCount: Int, failCount: Int) -> Unit) {
-        if (images.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
+        if (images.isEmpty() || isShowProgress) return
+        batchSaveJob = viewModelScope.launch(Dispatchers.IO) {
             isShowProgress = true
             progress = 0f
             val snapshot = images.toList()
             var successCount = 0
             var failCount = 0
             for (i in snapshot.indices) {
+                if (!isActive) break
                 val ok = snapshot[i].save(i)
                 if (ok) successCount++ else failCount++
                 progress = (i + 1).toFloat() / snapshot.size
