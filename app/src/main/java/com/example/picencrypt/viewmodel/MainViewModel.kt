@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.picencrypt.model.Algorithm
+import com.example.picencrypt.model.AppThemeMode
 import com.example.picencrypt.model.ImageExportFormat
 import com.example.picencrypt.model.MyImage
 import com.example.picencrypt.utils.FileUtils
@@ -37,12 +38,15 @@ class MainViewModel : ViewModel() {
     var isShowRequestWritePermissionDialog by mutableStateOf(false)
     var isShowMethodAndKeySettingOnTopLayer by mutableStateOf(false)
 
-    // ---------------- 全局偏好与触觉反馈设置 ----------------
+    // ---------------- 全局偏好、主题外观与触觉反馈设置 ----------------
     var isHapticFeedbackEnabled by mutableStateOf(true)
+    var appThemeMode by mutableStateOf(AppThemeMode.FOLLOW_SYSTEM)
 
     fun initPreferences(context: Context) {
         val sp = context.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
         isHapticFeedbackEnabled = sp.getBoolean("key_haptic_feedback", true)
+        val themeId = sp.getInt("key_theme_mode", AppThemeMode.FOLLOW_SYSTEM.id)
+        appThemeMode = AppThemeMode.fromId(themeId)
     }
 
     fun setHapticFeedbackEnabled(enabled: Boolean, context: Context? = null) {
@@ -50,6 +54,14 @@ class MainViewModel : ViewModel() {
         context?.let {
             val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
             sp.edit().putBoolean("key_haptic_feedback", enabled).apply()
+        }
+    }
+
+    fun setAppThemeMode(mode: AppThemeMode, context: Context? = null) {
+        appThemeMode = mode
+        context?.let {
+            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
+            sp.edit().putInt("key_theme_mode", mode.id).apply()
         }
     }
 

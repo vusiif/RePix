@@ -56,6 +56,8 @@ import com.example.picencrypt.ui.screens.EncryptScreen
 import com.example.picencrypt.ui.screens.MirageScreen
 import com.example.picencrypt.ui.screens.SafeScreen
 import com.example.picencrypt.ui.screens.StegoScreen
+import androidx.compose.foundation.isSystemInDarkTheme
+import com.example.picencrypt.model.AppThemeMode
 import com.example.picencrypt.ui.theme.PicEncryptTheme
 import com.example.picencrypt.viewmodel.MainViewModel
 
@@ -68,7 +70,12 @@ class MainActivity : ComponentActivity() {
         viewModel.initPreferences(this)
         handleIncomingIntent(intent)
         setContent {
-            PicEncryptTheme {
+            val isDarkTheme = when (viewModel.appThemeMode) {
+                AppThemeMode.FOLLOW_SYSTEM -> isSystemInDarkTheme()
+                AppThemeMode.LIGHT -> false
+                AppThemeMode.DARK -> true
+            }
+            PicEncryptTheme(darkTheme = isDarkTheme) {
                 MainApp(viewModel = viewModel)
             }
         }

@@ -37,7 +37,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.picencrypt.R
 import com.example.picencrypt.model.Algorithm
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.example.picencrypt.model.AppThemeMode
 import com.example.picencrypt.model.ImageExportFormat
+import com.example.picencrypt.utils.performHapticIf
 import com.example.picencrypt.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,6 +53,7 @@ fun MethodAndKeySettings(
 ) {
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
 
     ExposedDropdownMenuBox(
         expanded = viewModel.isDropdownMenuExpanded && isExpandedAllowed,
@@ -155,6 +160,64 @@ fun MethodAndKeySettings(
             checked = viewModel.isHapticFeedbackEnabled,
             onCheckedChange = { viewModel.setHapticFeedbackEnabled(it, context) }
         )
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .padding(horizontal = 10.dp, vertical = 2.dp)
+            .width(280.dp)
+    ) {
+        Text(
+            text = stringResource(id = R.string.theme_setting_title),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .width(280.dp)
+    ) {
+        for (themeMode in AppThemeMode.entries) {
+            val isSelected = viewModel.appThemeMode == themeMode
+            val containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            }
+            val contentColor = if (isSelected) {
+                MaterialTheme.colorScheme.onPrimary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = containerColor,
+                contentColor = contentColor,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                        viewModel.setAppThemeMode(themeMode, context)
+                    }
+            ) {
+                Text(
+                    text = stringResource(id = themeMode.stringResId),
+                    fontSize = 12.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
     }
 
     Spacer(modifier = Modifier.height(6.dp))
