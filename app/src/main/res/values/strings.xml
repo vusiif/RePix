@@ -20,6 +20,10 @@
     <string name="invalid_picencrypt_key_toast">PicEncrypt算法仅支持0到1(不含0和1)的小数作为密钥</string>
     <string name="succeeded_save_image_toast">成功保存图片到相册</string>
     <string name="failed_save_image_toast">保存图片失败</string>
+    <string name="save_failed_permission">存储权限不足，请在系统设置中授权</string>
+    <string name="save_failed_mediastore">系统媒体库拒绝创建文件，请检查存储空间</string>
+    <string name="save_failed_dir">无法创建目标图片目录</string>
+    <string name="save_failed_io">图片写入流异常或空间不足</string>
     <string name="start_encryption">正在混淆</string>
     <string name="encryption_completed">完成混淆</string>
     <string name="start_decryption">正在解混淆</string>

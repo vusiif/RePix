@@ -31,6 +31,11 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
+sealed class SaveResult {
+    object Success : SaveResult()
+    data class Failure(val message: String, val throwable: Throwable? = null) : SaveResult()
+}
+
 class MyImage(
     val uri: Uri,
     context: Context,
@@ -268,7 +273,7 @@ class MyImage(
         thumbnail = loadThumbnailFromUri()
     }
 
-    fun save(index: Int = 0): Boolean {
+    fun saveWithDetail(index: Int = 0): SaveResult {
         val dateTime = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         var ms = System.currentTimeMillis()
         ms -= ms / 1000 * 1000 + index
@@ -291,14 +296,16 @@ class MyImage(
                 val insertUri = appContext.contentResolver.insert(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     contentValues
-                ) ?: return false
+                ) ?: return SaveResult.Failure(appContext.getString(R.string.save_failed_mediastore))
 
-                appContext.contentResolver.openOutputStream(insertUri)?.use { out ->
+                val written = appContext.contentResolver.openOutputStream(insertUri)?.use { out ->
                     currentBmp.compress(Bitmap.CompressFormat.PNG, 100, out)
                 } ?: false
+
+                if (written) SaveResult.Success else SaveResult.Failure(appContext.getString(R.string.save_failed_io))
             } else {
-                if (!saveDir.exists()) {
-                    saveDir.mkdirs()
+                if (!saveDir.exists() && !saveDir.mkdirs()) {
+                    return SaveResult.Failure(appContext.getString(R.string.save_failed_dir))
                 }
                 val filePath = File(saveDir, imageName)
                 FileOutputStream(filePath).use { out ->
@@ -311,11 +318,15 @@ class MyImage(
                         Uri.parse("file://${filePath.absolutePath}")
                     )
                 )
-                true
+                SaveResult.Success
             }
+        } catch (e: SecurityException) {
+            SaveResult.Failure(appContext.getString(R.string.save_failed_permission), e)
         } catch (e: Exception) {
-            e.printStackTrace()
-            false
+            val msg = e.localizedMessage ?: appContext.getString(R.string.save_failed_io)
+            SaveResult.Failure(msg, e)
         }
     }
+
+    fun save(index: Int = 0): Boolean = saveWithDetail(index) is SaveResult.Success
 }
