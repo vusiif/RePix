@@ -129,4 +129,13 @@
     <string name="export_format_png">PNG (无损高保真)</string>
     <string name="export_format_webp">WebP (无损省空间)</string>
     <string name="export_format_jpeg">JPEG (高兼容压缩)</string>
+
+    <!-- 幻影坦克微调控制台 -->
+    <string name="mirage_adjust_title">🎛️ 画面高级微调控制台</string>
+    <string name="mirage_adjust_reset">恢复默认</string>
+    <string name="mirage_cover_brightness">表图亮度补偿: %1$d</string>
+    <string name="mirage_cover_contrast">表图对比度: %1$.2fx</string>
+    <string name="mirage_hidden_brightness">里图亮度增强: %1$d</string>
+    <string name="mirage_hidden_contrast">里图对比度: %1$.2fx</string>
+    <string name="mirage_adjust_hint">💡 适当提亮表图或增强里图对比度，可显著强化黑白底下的欺骗视觉反差</string>
 </resources>

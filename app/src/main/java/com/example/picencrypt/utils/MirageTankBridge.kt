@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.net.Uri
@@ -125,16 +127,22 @@ object MirageTankBridge {
     }
 
     /**
-     * 高阶合成流程：在内存中生成全彩/黑白幻影坦克 Bitmap，供实时预览使用
+     * 高阶合成流程：在内存中生成全彩/黑白幻影坦克 Bitmap，供实时预览使用，支持亮度与对比度微调
      */
     fun createMirageBitmap(
         cover: Bitmap,
         hidden: Bitmap,
         isColored: Boolean = true,
         maxDimension: Int = 1200,
-        mode: MirageScaleMode = MirageScaleMode.FIT
+        mode: MirageScaleMode = MirageScaleMode.FIT,
+        coverBrightness: Float = 0f,
+        coverContrast: Float = 1f,
+        hiddenBrightness: Float = 0f,
+        hiddenContrast: Float = 1f
     ): Bitmap? {
-        val (scaledCover, scaledHidden, outBitmap) = alignBitmaps(cover, hidden, maxDimension, mode)
+        val adjustedCover = adjustBrightnessContrast(cover, coverBrightness, coverContrast)
+        val adjustedHidden = adjustBrightnessContrast(hidden, hiddenBrightness, hiddenContrast)
+        val (scaledCover, scaledHidden, outBitmap) = alignBitmaps(adjustedCover, adjustedHidden, maxDimension, mode)
 
         val success = if (isColored) {
             processColoredMirageTank(scaledCover, scaledHidden, outBitmap)
@@ -146,6 +154,32 @@ object MirageTankBridge {
     }
 
     /**
+     * 对位图进行硬件加速的亮度和对比度微调
+     * @param brightness 亮度偏移量 (-100f ~ +100f)
+     * @param contrast 对比度倍率 (0.2f ~ 2.0f)
+     */
+    fun adjustBrightnessContrast(
+        src: Bitmap,
+        brightness: Float = 0f,
+        contrast: Float = 1f
+    ): Bitmap {
+        if (brightness == 0f && contrast == 1f) return src
+        val result = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(result)
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        val translate = (-0.5f * contrast + 0.5f) * 255f + brightness
+        val cm = ColorMatrix(floatArrayOf(
+            contrast, 0f, 0f, 0f, translate,
+            0f, contrast, 0f, 0f, translate,
+            0f, 0f, contrast, 0f, translate,
+            0f, 0f, 0f, 1f, 0f
+        ))
+        paint.colorFilter = ColorMatrixColorFilter(cm)
+        canvas.drawBitmap(src, 0f, 0f, paint)
+        return result
+    }
+
+    /**
      * 高阶合成流程：支持全彩/黑白模式生成，并强制以 PNG 格式保存到系统相册
      */
     fun createAndSaveMirageTank(
@@ -154,9 +188,23 @@ object MirageTankBridge {
         hidden: Bitmap,
         isColored: Boolean = true,
         maxDimension: Int = 1200,
-        mode: MirageScaleMode = MirageScaleMode.FIT
+        mode: MirageScaleMode = MirageScaleMode.FIT,
+        coverBrightness: Float = 0f,
+        coverContrast: Float = 1f,
+        hiddenBrightness: Float = 0f,
+        hiddenContrast: Float = 1f
     ): Pair<Boolean, Bitmap?> {
-        val outBitmap = createMirageBitmap(cover, hidden, isColored, maxDimension, mode) ?: return Pair(false, null)
+        val outBitmap = createMirageBitmap(
+            cover,
+            hidden,
+            isColored,
+            maxDimension,
+            mode,
+            coverBrightness,
+            coverContrast,
+            hiddenBrightness,
+            hiddenContrast
+        ) ?: return Pair(false, null)
         val saved = saveMiragePng(context, outBitmap)
         return Pair(saved, outBitmap)
     }

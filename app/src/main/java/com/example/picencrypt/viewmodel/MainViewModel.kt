@@ -73,6 +73,19 @@ class MainViewModel : ViewModel() {
     var miragePreviewBitmap by mutableStateOf<Bitmap?>(null)
     var mirageBgMode by mutableIntStateOf(0) // 0: 白底, 1: 黑底, 2: 棋盘格
     var isMirageProcessing by mutableStateOf(false)
+    var mirageCoverBrightness by mutableFloatStateOf(0f)
+    var mirageCoverContrast by mutableFloatStateOf(1f)
+    var mirageHiddenBrightness by mutableFloatStateOf(0f)
+    var mirageHiddenContrast by mutableFloatStateOf(1f)
+    var isMirageAdjustExpanded by mutableStateOf(false)
+
+    fun resetMirageAdjustments() {
+        mirageCoverBrightness = 0f
+        mirageCoverContrast = 1f
+        mirageHiddenBrightness = 0f
+        mirageHiddenContrast = 1f
+        miragePreviewBitmap = null
+    }
 
     // ---------------- Tab 3: 安全保险箱状态 (AES-256-GCM) ----------------
     var safeMode by mutableIntStateOf(0) // 0: 加密为 .rpx, 1: 解密 .rpx
@@ -456,7 +469,11 @@ class MainViewModel : ViewModel() {
                         hiddenBmp,
                         isColored = mirageIsColoredMode,
                         maxDimension = 1200,
-                        mode = mirageScaleMode
+                        mode = mirageScaleMode,
+                        coverBrightness = mirageCoverBrightness,
+                        coverContrast = mirageCoverContrast,
+                        hiddenBrightness = mirageHiddenBrightness,
+                        hiddenContrast = mirageHiddenContrast
                     )
                     withContext(Dispatchers.Main) {
                         miragePreviewBitmap = preview
@@ -504,7 +521,11 @@ class MainViewModel : ViewModel() {
                             coverBmp,
                             hiddenBmp,
                             isColored = mirageIsColoredMode,
-                            mode = mirageScaleMode
+                            mode = mirageScaleMode,
+                            coverBrightness = mirageCoverBrightness,
+                            coverContrast = mirageCoverContrast,
+                            hiddenBrightness = mirageHiddenBrightness,
+                            hiddenContrast = mirageHiddenContrast
                         )
                         withContext(Dispatchers.Main) {
                             if (saved && outBmp != null) {

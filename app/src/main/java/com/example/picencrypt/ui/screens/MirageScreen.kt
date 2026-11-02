@@ -7,6 +7,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Slider
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -226,6 +228,141 @@ fun MirageScreen(
                         mirageHiddenLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" })
                     }
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 高级画面微调控制台 (折叠卡片)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.isMirageAdjustExpanded = !viewModel.isMirageAdjustExpanded },
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(id = R.string.mirage_adjust_title),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = if (viewModel.isMirageAdjustExpanded) "收起 ▲" else "展开 ▼",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        if (viewModel.isMirageAdjustExpanded) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = stringResource(id = R.string.mirage_adjust_hint),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // 表图亮度补偿 (-50 ~ 50)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(id = R.string.mirage_cover_brightness, viewModel.mirageCoverBrightness.toInt()),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Slider(
+                                value = viewModel.mirageCoverBrightness,
+                                onValueChange = {
+                                    viewModel.mirageCoverBrightness = it
+                                    viewModel.miragePreviewBitmap = null
+                                },
+                                valueRange = -50f..50f,
+                                steps = 20
+                            )
+
+                            // 表图对比度 (0.5 ~ 1.5)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(id = R.string.mirage_cover_contrast, viewModel.mirageCoverContrast),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Slider(
+                                value = viewModel.mirageCoverContrast,
+                                onValueChange = {
+                                    viewModel.mirageCoverContrast = it
+                                    viewModel.miragePreviewBitmap = null
+                                },
+                                valueRange = 0.5f..1.5f,
+                                steps = 20
+                            )
+
+                            // 里图亮度增强 (-50 ~ 50)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(id = R.string.mirage_hidden_brightness, viewModel.mirageHiddenBrightness.toInt()),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Slider(
+                                value = viewModel.mirageHiddenBrightness,
+                                onValueChange = {
+                                    viewModel.mirageHiddenBrightness = it
+                                    viewModel.miragePreviewBitmap = null
+                                },
+                                valueRange = -50f..50f,
+                                steps = 20
+                            )
+
+                            // 里图对比度 (0.5 ~ 1.5)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(id = R.string.mirage_hidden_contrast, viewModel.mirageHiddenContrast),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Slider(
+                                value = viewModel.mirageHiddenContrast,
+                                onValueChange = {
+                                    viewModel.mirageHiddenContrast = it
+                                    viewModel.miragePreviewBitmap = null
+                                },
+                                valueRange = 0.5f..1.5f,
+                                steps = 20
+                            )
+
+                            // 恢复默认按钮
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                OutlinedButton(
+                                    onClick = { viewModel.resetMirageAdjustments() },
+                                    modifier = Modifier.height(32.dp),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text(text = stringResource(id = R.string.mirage_adjust_reset), fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
