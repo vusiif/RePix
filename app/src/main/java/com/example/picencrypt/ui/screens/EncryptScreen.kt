@@ -62,6 +62,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -73,6 +75,7 @@ import com.example.picencrypt.R
 import com.example.picencrypt.model.Algorithm
 import com.example.picencrypt.ui.components.MethodAndKeySettings
 import com.example.picencrypt.ui.components.ImageViewerDialog
+import com.example.picencrypt.utils.BatchMetricsHelper
 import com.example.picencrypt.utils.ImageScramble.ProcessType
 import com.example.picencrypt.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
@@ -84,6 +87,7 @@ fun EncryptScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     var viewingImage by remember { mutableStateOf<com.example.picencrypt.model.MyImage?>(null) }
     val focusManager = LocalFocusManager.current
     val listState = rememberLazyListState()
@@ -190,12 +194,14 @@ fun EncryptScreen(
                                             onFailedToast = {
                                                 Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
                                             },
-                                            onFinish = { _, successCount, failCount ->
-                                                val toastMsg = if (failCount == 0) {
-                                                    context.getString(R.string.encryption_completed) + " (共 ${successCount} 张)"
-                                                } else {
-                                                    "完成混淆：成功 ${successCount} 张，失败 ${failCount} 张"
-                                                }
+                                            onFinish = { isEncrypt, successCount, failCount, durationMs ->
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                val toastMsg = BatchMetricsHelper.formatProcessSummary(
+                                                    isEncrypt = isEncrypt,
+                                                    successCount = successCount,
+                                                    failCount = failCount,
+                                                    durationMs = durationMs
+                                                )
                                                 Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
                                             }
                                         )
@@ -218,12 +224,14 @@ fun EncryptScreen(
                                             onFailedToast = {
                                                 Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
                                             },
-                                            onFinish = { _, successCount, failCount ->
-                                                val toastMsg = if (failCount == 0) {
-                                                    context.getString(R.string.decryption_completed) + " (共 ${successCount} 张)"
-                                                } else {
-                                                    "完成解混淆：成功 ${successCount} 张，失败 ${failCount} 张"
-                                                }
+                                            onFinish = { isEncrypt, successCount, failCount, durationMs ->
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                val toastMsg = BatchMetricsHelper.formatProcessSummary(
+                                                    isEncrypt = isEncrypt,
+                                                    successCount = successCount,
+                                                    failCount = failCount,
+                                                    durationMs = durationMs
+                                                )
                                                 Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
                                             }
                                         )
@@ -245,6 +253,7 @@ fun EncryptScreen(
                         ) {
                             Button(
                                 onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     viewModel.reloadAllImages(
                                         onFileNotFound = {
                                             Toast.makeText(context, context.getString(R.string.file_not_found), Toast.LENGTH_SHORT).show()
@@ -257,7 +266,10 @@ fun EncryptScreen(
                             }
 
                             Button(
-                                onClick = { viewModel.clearAllImages() },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    viewModel.clearAllImages()
+                                },
                                 modifier = Modifier.width(120.dp)
                             ) {
                                 Text(text = stringResource(id = R.string.clear_btn))
@@ -290,12 +302,13 @@ fun EncryptScreen(
                                     }
 
                                     Toast.makeText(context, context.getString(R.string.start_saving), Toast.LENGTH_SHORT).show()
-                                    viewModel.saveAllImages { successCount, failCount ->
-                                        val msg = if (failCount == 0) {
-                                            context.getString(R.string.succeeded_save_image_toast) + " (${successCount}张)"
-                                        } else {
-                                            "保存完成：成功 ${successCount} 张，失败 ${failCount} 张"
-                                        }
+                                    viewModel.saveAllImages { successCount, failCount, durationMs ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        val msg = BatchMetricsHelper.formatSaveSummary(
+                                            successCount = successCount,
+                                            failCount = failCount,
+                                            durationMs = durationMs
+                                        )
                                         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                     }
                                 },
@@ -570,6 +583,10 @@ fun EncryptScreen(
                                                     },
                                                     onFailedToast = {
                                                         Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    onSuccess = { durationMs ->
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        Toast.makeText(context, "解混淆完成 · 耗时 ${durationMs}ms", Toast.LENGTH_SHORT).show()
                                                     }
                                                 )
                                             }
@@ -595,6 +612,10 @@ fun EncryptScreen(
                                                     },
                                                     onFailedToast = {
                                                         Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    onSuccess = { durationMs ->
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        Toast.makeText(context, "混淆完成 · 耗时 ${durationMs}ms", Toast.LENGTH_SHORT).show()
                                                     }
                                                 )
                                             }

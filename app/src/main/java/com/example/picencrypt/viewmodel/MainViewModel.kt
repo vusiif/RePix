@@ -154,13 +154,14 @@ class MainViewModel : ViewModel() {
         processType: ProcessType,
         onFallbackToast: () -> Unit,
         onFailedToast: () -> Unit,
-        onFinish: (isEncrypt: Boolean, successCount: Int, failCount: Int) -> Unit
+        onFinish: (isEncrypt: Boolean, successCount: Int, failCount: Int, durationMs: Long) -> Unit
     ) {
         if (images.isEmpty() || isShowProgress) return
         val algoSnapshot = selectedAlgorithm
         val keySnapshot = keyString
         val compatSnapshot = isCompatMode
         val typeSnapshot = processType
+        val startTime = System.currentTimeMillis()
 
         batchProcessJob = viewModelScope.launch(Dispatchers.Default) {
             isShowProgress = true
@@ -192,13 +193,14 @@ class MainViewModel : ViewModel() {
                 }
                 progress = (i + 1).toFloat() / snapshot.size
             }
+            val durationMs = System.currentTimeMillis() - startTime
             withContext(Dispatchers.Main) {
                 // 触发列表通知，确保 Compose 观察到元素属性变化
                 for (i in images.indices) {
                     images[i] = images[i]
                 }
                 isShowProgress = false
-                onFinish(processType == ProcessType.ENCRYPT, successCount, failCount)
+                onFinish(processType == ProcessType.ENCRYPT, successCount, failCount, durationMs)
             }
         }
     }
@@ -249,8 +251,9 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun saveAllImages(onComplete: (successCount: Int, failCount: Int) -> Unit) {
+    fun saveAllImages(onComplete: (successCount: Int, failCount: Int, durationMs: Long) -> Unit) {
         if (images.isEmpty() || isShowProgress) return
+        val startTime = System.currentTimeMillis()
         batchSaveJob = viewModelScope.launch(Dispatchers.IO) {
             isShowProgress = true
             progress = 0f
@@ -263,9 +266,10 @@ class MainViewModel : ViewModel() {
                 if (ok) successCount++ else failCount++
                 progress = (i + 1).toFloat() / snapshot.size
             }
+            val durationMs = System.currentTimeMillis() - startTime
             withContext(Dispatchers.Main) {
                 isShowProgress = false
-                onComplete(successCount, failCount)
+                onComplete(successCount, failCount, durationMs)
             }
         }
     }
@@ -274,10 +278,12 @@ class MainViewModel : ViewModel() {
         index: Int,
         processType: ProcessType,
         onFallbackToast: () -> Unit,
-        onFailedToast: () -> Unit
+        onFailedToast: () -> Unit,
+        onSuccess: ((durationMs: Long) -> Unit)? = null
     ) {
         if (index !in images.indices) return
         val item = images[index]
+        val startTime = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.Default) {
             var hadFallback = false
             val success = item.process(
@@ -287,12 +293,14 @@ class MainViewModel : ViewModel() {
                 forceCompat = isCompatMode,
                 onFallback = { hadFallback = true }
             )
+            val durationMs = System.currentTimeMillis() - startTime
             withContext(Dispatchers.Main) {
                 if (index in images.indices) {
                     images[index] = item // 触发 Snapshot 重绘
                 }
                 if (hadFallback) onFallbackToast()
                 else if (!success) onFailedToast()
+                else onSuccess?.invoke(durationMs)
             }
         }
     }
