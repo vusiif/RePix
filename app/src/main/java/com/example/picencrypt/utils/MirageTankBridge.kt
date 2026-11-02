@@ -235,7 +235,7 @@ object MirageTankBridge {
                 FileOutputStream(outFile).use { out ->
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 }
-                context.sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse("file://${outFile.absolutePath}")))
+                FileUtils.notifyMediaScanner(context, outFile, "image/png")
             }
             true
         } catch (e: Exception) {

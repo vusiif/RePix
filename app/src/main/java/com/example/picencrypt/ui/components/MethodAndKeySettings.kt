@@ -185,17 +185,36 @@ fun MethodAndKeySettings(
         }
     }
 
-    val formatHint = when (viewModel.exportFormat) {
-        ImageExportFormat.PNG -> stringResource(id = R.string.export_format_png)
-        ImageExportFormat.WEBP -> stringResource(id = R.string.export_format_webp)
-        ImageExportFormat.JPEG -> stringResource(id = R.string.export_format_jpeg)
+    val (hintText, containerColor, textColor) = when (viewModel.exportFormat) {
+        ImageExportFormat.PNG -> Triple(
+            stringResource(id = R.string.export_hint_png),
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+            MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        ImageExportFormat.WEBP -> Triple(
+            stringResource(id = R.string.export_hint_webp),
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+            MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        ImageExportFormat.JPEG -> Triple(
+            stringResource(id = R.string.export_hint_jpeg),
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
+            MaterialTheme.colorScheme.onErrorContainer
+        )
     }
-    Text(
-        text = "💡 $formatHint",
-        fontSize = 11.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = containerColor,
         modifier = Modifier
-            .padding(horizontal = 10.dp, vertical = 2.dp)
+            .padding(horizontal = 10.dp, vertical = 4.dp)
             .width(280.dp)
-    )
+    ) {
+        Text(
+            text = hintText,
+            fontSize = 11.sp,
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+        )
+    }
 }

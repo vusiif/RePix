@@ -147,4 +147,9 @@
     <string name="mirage_presets_title">🪄 示例预设:</string>
     <string name="mirage_preset_day_night">☀️ 日夜奇景</string>
     <string name="mirage_preset_question_truth">❓ 疑问真相</string>
+
+    <!-- 导出格式特性智能建议 -->
+    <string name="export_hint_png" formatted="false">🛡️ 经典无损：100% 保持各通道像素精度，推荐算法置乱使用</string>
+    <string name="export_hint_webp" formatted="false">⚡ 推荐无损：WebP 无损高压缩，节省 ~40% 空间且 100% 可逆</string>
+    <string name="export_hint_jpeg">⚠️ 有损压缩：JPEG 压缩会破坏高频像素细节，可能导致后续解密失真</string>
 </resources>

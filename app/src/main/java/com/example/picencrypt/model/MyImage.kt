@@ -14,6 +14,7 @@ import android.provider.MediaStore
 import com.example.picencrypt.R
 import com.example.picencrypt.utils.BlockScramble
 import com.example.picencrypt.utils.ExifUtils
+import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.ImageMetrics
 import com.example.picencrypt.utils.ImageMetricsHelper
 import com.example.picencrypt.utils.ImageScramble.Image
@@ -322,12 +323,7 @@ class MyImage(
                     currentBmp.compress(compressFormat, quality, out)
                     out.flush()
                 }
-                appContext.sendBroadcast(
-                    Intent(
-                        Intent.ACTION_MEDIA_SCANNER_SCAN_FILE,
-                        Uri.parse("file://${filePath.absolutePath}")
-                    )
-                )
+                FileUtils.notifyMediaScanner(appContext, filePath, format.mimeType)
                 SaveResult.Success
             }
         } catch (e: SecurityException) {

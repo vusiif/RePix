@@ -19,6 +19,28 @@ import java.util.Locale
 
 object FileUtils {
 
+    /**
+     * 跨版本通知系统 MediaStore 刷新或使用 MediaScannerConnection 索引新生成的图片
+     * 彻底解决 ACTION_MEDIA_SCANNER_SCAN_FILE 过时警告，并确保相册立刻显示
+     */
+    fun notifyMediaScanner(context: Context, file: File, mimeType: String? = null) {
+        try {
+            android.media.MediaScannerConnection.scanFile(
+                context.applicationContext,
+                arrayOf(file.absolutePath),
+                if (mimeType != null) arrayOf(mimeType) else null,
+                null
+            )
+        } catch (_: Exception) {
+            try {
+                @Suppress("DEPRECATION")
+                context.sendBroadcast(
+                    Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(file))
+                )
+            } catch (_: Exception) {}
+        }
+    }
+
     fun getUriFilename(context: Context, uri: Uri): String {
         var name = ""
         val cursor = context.contentResolver.query(
@@ -77,7 +99,7 @@ object FileUtils {
                         }
                     }
                 }
-                context.sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse("file://${outFile.absolutePath}")))
+                notifyMediaScanner(context, outFile, mimeType)
             }
             true
         } catch (e: Exception) {
