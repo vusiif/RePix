@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -18,6 +20,12 @@ import java.util.Locale
 import kotlin.math.max
 
 object MirageTankBridge {
+
+    enum class MirageScaleMode {
+        FIT,        // 保持比例居中（无拉伸变形，多余留空为透明）
+        CROP,       // 保持比例居中裁切填满
+        STRETCH     // 强制拉伸至相同宽高
+    }
 
     init {
         try {
@@ -48,12 +56,13 @@ object MirageTankBridge {
     ): Boolean
 
     /**
-     * 将两张可能尺寸不同的 Bitmap 缩放至统一规格，并确保配置为 ARGB_8888
+     * 将两张可能尺寸和比例不同的 Bitmap 缩放至统一规格，支持 Fit 居中无变形、Crop 裁切、Stretch 拉伸
      */
     fun alignBitmaps(
         cover: Bitmap,
         hidden: Bitmap,
-        maxDimension: Int = 1200
+        maxDimension: Int = 1200,
+        mode: MirageScaleMode = MirageScaleMode.FIT
     ): Triple<Bitmap, Bitmap, Bitmap> {
         var targetW = max(cover.width, hidden.width)
         var targetH = max(cover.height, hidden.height)
@@ -68,11 +77,51 @@ object MirageTankBridge {
             targetH = (targetH / ratio).toInt().coerceAtLeast(1)
         }
 
-        val scaledCover = Bitmap.createScaledBitmap(cover, targetW, targetH, true).ensureArgb8888()
-        val scaledHidden = Bitmap.createScaledBitmap(hidden, targetW, targetH, true).ensureArgb8888()
+        val scaledCover = transformBitmap(cover, targetW, targetH, mode).ensureArgb8888()
+        val scaledHidden = transformBitmap(hidden, targetW, targetH, mode).ensureArgb8888()
         val outBitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
 
         return Triple(scaledCover, scaledHidden, outBitmap)
+    }
+
+    private fun transformBitmap(src: Bitmap, targetW: Int, targetH: Int, mode: MirageScaleMode): Bitmap {
+        return when (mode) {
+            MirageScaleMode.STRETCH -> {
+                Bitmap.createScaledBitmap(src, targetW, targetH, true)
+            }
+            MirageScaleMode.FIT -> {
+                val result = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(result)
+                val scale = minOf(targetW.toFloat() / src.width, targetH.toFloat() / src.height)
+                val drawW = src.width * scale
+                val drawH = src.height * scale
+                val left = (targetW - drawW) / 2f
+                val top = (targetH - drawH) / 2f
+                val matrix = Matrix().apply {
+                    postScale(scale, scale)
+                    postTranslate(left, top)
+                }
+                val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+                canvas.drawBitmap(src, matrix, paint)
+                result
+            }
+            MirageScaleMode.CROP -> {
+                val result = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(result)
+                val scale = maxOf(targetW.toFloat() / src.width, targetH.toFloat() / src.height)
+                val drawW = src.width * scale
+                val drawH = src.height * scale
+                val left = (targetW - drawW) / 2f
+                val top = (targetH - drawH) / 2f
+                val matrix = Matrix().apply {
+                    postScale(scale, scale)
+                    postTranslate(left, top)
+                }
+                val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+                canvas.drawBitmap(src, matrix, paint)
+                result
+            }
+        }
     }
 
     /**
@@ -82,9 +131,10 @@ object MirageTankBridge {
         cover: Bitmap,
         hidden: Bitmap,
         isColored: Boolean = true,
-        maxDimension: Int = 1200
+        maxDimension: Int = 1200,
+        mode: MirageScaleMode = MirageScaleMode.FIT
     ): Bitmap? {
-        val (scaledCover, scaledHidden, outBitmap) = alignBitmaps(cover, hidden, maxDimension)
+        val (scaledCover, scaledHidden, outBitmap) = alignBitmaps(cover, hidden, maxDimension, mode)
 
         val success = if (isColored) {
             processColoredMirageTank(scaledCover, scaledHidden, outBitmap)
@@ -103,9 +153,10 @@ object MirageTankBridge {
         cover: Bitmap,
         hidden: Bitmap,
         isColored: Boolean = true,
-        maxDimension: Int = 1200
+        maxDimension: Int = 1200,
+        mode: MirageScaleMode = MirageScaleMode.FIT
     ): Pair<Boolean, Bitmap?> {
-        val outBitmap = createMirageBitmap(cover, hidden, isColored, maxDimension) ?: return Pair(false, null)
+        val outBitmap = createMirageBitmap(cover, hidden, isColored, maxDimension, mode) ?: return Pair(false, null)
         val saved = saveMiragePng(context, outBitmap)
         return Pair(saved, outBitmap)
     }

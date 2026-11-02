@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.picencrypt.R
 import com.example.picencrypt.utils.FileUtils
+import com.example.picencrypt.utils.MirageTankBridge
 import com.example.picencrypt.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -139,6 +140,50 @@ fun MirageScreen(
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text(text = stringResource(id = R.string.mirage_gray_mode), fontSize = 13.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // 比例适配模式选择 (Fit 自适应 / Crop 裁切 / Stretch 拉伸)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(id = R.string.mirage_scale_title) + ":",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row {
+                        FilterChip(
+                            selected = viewModel.mirageScaleMode == MirageTankBridge.MirageScaleMode.FIT,
+                            onClick = {
+                                viewModel.mirageScaleMode = MirageTankBridge.MirageScaleMode.FIT
+                                viewModel.miragePreviewBitmap = null
+                            },
+                            label = { Text(text = "自适应", fontSize = 11.sp) },
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                        FilterChip(
+                            selected = viewModel.mirageScaleMode == MirageTankBridge.MirageScaleMode.CROP,
+                            onClick = {
+                                viewModel.mirageScaleMode = MirageTankBridge.MirageScaleMode.CROP
+                                viewModel.miragePreviewBitmap = null
+                            },
+                            label = { Text(text = "裁切", fontSize = 11.sp) },
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                        FilterChip(
+                            selected = viewModel.mirageScaleMode == MirageTankBridge.MirageScaleMode.STRETCH,
+                            onClick = {
+                                viewModel.mirageScaleMode = MirageTankBridge.MirageScaleMode.STRETCH
+                                viewModel.miragePreviewBitmap = null
+                            },
+                            label = { Text(text = "拉伸", fontSize = 11.sp) }
+                        )
                     }
                 }
 

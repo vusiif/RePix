@@ -60,6 +60,7 @@ class MainViewModel : ViewModel() {
 
     // ---------------- Tab 2: 幻影坦克状态 ----------------
     var mirageIsColoredMode by mutableStateOf(true)
+    var mirageScaleMode by mutableStateOf(MirageTankBridge.MirageScaleMode.FIT)
     var mirageCoverUri by mutableStateOf<Uri?>(null)
     var mirageHiddenUri by mutableStateOf<Uri?>(null)
     var mirageCoverThumbnail by mutableStateOf<Bitmap?>(null)
@@ -118,11 +119,16 @@ class MainViewModel : ViewModel() {
         onFailedToast: () -> Unit,
         onFinish: (isEncrypt: Boolean, successCount: Int, failCount: Int) -> Unit
     ) {
-        if (images.isEmpty()) return
+        if (images.isEmpty() || isShowProgress) return
+        val algoSnapshot = selectedAlgorithm
+        val keySnapshot = keyString
+        val compatSnapshot = isCompatMode
+        val typeSnapshot = processType
+
         viewModelScope.launch(Dispatchers.Default) {
             isShowProgress = true
             progress = 0f
-            // 快照保护，避免遍历中列表变动造成并发竞态 (P1-2)
+            // 集合与参数双重快照保护，避免遍历中参数修改引发混淆状态污染 (P1-2)
             val snapshot = images.toList()
             var successCount = 0
             var failCount = 0
@@ -130,10 +136,10 @@ class MainViewModel : ViewModel() {
                 val item = snapshot[i]
                 var hadFallback = false
                 val success = item.process(
-                    selectedAlgorithm,
-                    processType,
-                    keyString,
-                    forceCompat = isCompatMode,
+                    algoSnapshot,
+                    typeSnapshot,
+                    keySnapshot,
+                    forceCompat = compatSnapshot,
                     onFallback = { hadFallback = true }
                 )
                 if (success) {
@@ -424,7 +430,8 @@ class MainViewModel : ViewModel() {
                         coverBmp,
                         hiddenBmp,
                         isColored = mirageIsColoredMode,
-                        maxDimension = 1200
+                        maxDimension = 1200,
+                        mode = mirageScaleMode
                     )
                     withContext(Dispatchers.Main) {
                         miragePreviewBitmap = preview
@@ -471,7 +478,8 @@ class MainViewModel : ViewModel() {
                             context,
                             coverBmp,
                             hiddenBmp,
-                            isColored = mirageIsColoredMode
+                            isColored = mirageIsColoredMode,
+                            mode = mirageScaleMode
                         )
                         withContext(Dispatchers.Main) {
                             if (saved && outBmp != null) {

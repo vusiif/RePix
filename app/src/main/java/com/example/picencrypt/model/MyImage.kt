@@ -49,7 +49,7 @@ class MyImage(
         bitmap = appContext.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it)
         } ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-        thumbnail = loadThumbnail()
+        thumbnail = loadThumbnailFromUri()
     }
 
     fun loadFilename(): String {
@@ -71,10 +71,9 @@ class MyImage(
     }
 
     /**
-     * 缩略图降采样解码：先探测尺寸再下采样加载，有效预防多大图列表 OOM (P0-1)
+     * 首次或重载时从 URI 降采样解码缩略图 (P0-1)
      */
-    fun loadThumbnail(): Bitmap {
-        val maxSize = 800
+    fun loadThumbnailFromUri(maxSize: Int = 400): Bitmap {
         val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         appContext.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, boundsOptions)
@@ -99,15 +98,27 @@ class MyImage(
             bitmap
         }
 
-        val ratio: Float = if (sampledBitmap.width > sampledBitmap.height) {
-            if (sampledBitmap.width > maxSize) sampledBitmap.width.toFloat() / maxSize else 1f
-        } else {
-            if (sampledBitmap.height > maxSize) sampledBitmap.height.toFloat() / maxSize else 1f
-        }
-        val targetW = (sampledBitmap.width.toFloat() / ratio).toInt().coerceAtLeast(1)
-        val targetH = (sampledBitmap.height.toFloat() / ratio).toInt().coerceAtLeast(1)
-        return ThumbnailUtils.extractThumbnail(sampledBitmap, targetW, targetH)
+        return createThumbnailFromBitmap(sampledBitmap, maxSize)
     }
+
+    /**
+     * 从当前最新的内存 Bitmap 生成缩略图（处理/旋转后调用，零磁盘 I/O，保证混淆缩略图与直方图真实更新）
+     */
+    fun createThumbnailFromBitmap(src: Bitmap, maxSize: Int = 400): Bitmap {
+        val ratio: Float = if (src.width > src.height) {
+            if (src.width > maxSize) src.width.toFloat() / maxSize else 1f
+        } else {
+            if (src.height > maxSize) src.height.toFloat() / maxSize else 1f
+        }
+        val targetW = (src.width.toFloat() / ratio).toInt().coerceAtLeast(1)
+        val targetH = (src.height.toFloat() / ratio).toInt().coerceAtLeast(1)
+        return ThumbnailUtils.extractThumbnail(src, targetW, targetH)
+    }
+
+    /**
+     * 兼容接口：默认直接基于当前内存 bitmap 创建最新缩略图
+     */
+    fun loadThumbnail(): Bitmap = createThumbnailFromBitmap(bitmap)
 
     fun process(
         algorithm: Algorithm,
@@ -127,7 +138,7 @@ class MyImage(
                 return false
             }
             cachedMetrics = null
-            thumbnail = loadThumbnail()
+            thumbnail = createThumbnailFromBitmap(bitmap)
             return true
         }
 
@@ -182,7 +193,7 @@ class MyImage(
 
         bitmap = Bitmap.createBitmap(image.pixels, image.width, image.height, Bitmap.Config.ARGB_8888)
         cachedMetrics = null
-        thumbnail = loadThumbnail()
+        thumbnail = createThumbnailFromBitmap(bitmap)
         return true
     }
 
@@ -199,7 +210,7 @@ class MyImage(
         matrix.setRotate(degree)
         bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
         cachedMetrics = null
-        thumbnail = loadThumbnail()
+        thumbnail = createThumbnailFromBitmap(bitmap)
     }
 
     fun reload() {
@@ -208,7 +219,7 @@ class MyImage(
             BitmapFactory.decodeStream(it)
         } ?: bitmap
         cachedMetrics = null
-        thumbnail = loadThumbnail()
+        thumbnail = loadThumbnailFromUri()
     }
 
     fun save(index: Int = 0): Boolean {

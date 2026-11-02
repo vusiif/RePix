@@ -77,6 +77,10 @@
     <string name="mirage_tool_title">幻影坦克 (光棱坦克)</string>
     <string name="mirage_colored_mode">光棱坦克 (全彩)</string>
     <string name="mirage_gray_mode">经典幻影 (黑白)</string>
+    <string name="mirage_scale_title">画面比例适配</string>
+    <string name="mirage_scale_fit">居中自适应 (无变形)</string>
+    <string name="mirage_scale_crop">居中裁切</string>
+    <string name="mirage_scale_stretch">强制拉伸</string>
     <string name="mirage_cover_label">表图 (白底显示)</string>
     <string name="mirage_hidden_label">里图 (黑底显示)</string>
     <string name="mirage_select_cover">选择表图 (白色背景显现)</string>
