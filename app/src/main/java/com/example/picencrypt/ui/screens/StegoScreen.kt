@@ -48,6 +48,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.picencrypt.R
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.example.picencrypt.utils.performHapticIf
 import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.SteganographyHelper
 import com.example.picencrypt.viewmodel.MainViewModel
@@ -58,6 +61,7 @@ fun StegoScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val scrollState = rememberScrollState()
 
     val stegoCoverLauncher = rememberLauncherForActivityResult(
@@ -108,7 +112,10 @@ fun StegoScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     Button(
-                        onClick = { viewModel.stegoMode = 0 },
+                        onClick = {
+                            haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                            viewModel.stegoMode = 0
+                        },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (viewModel.stegoMode == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
                             contentColor = if (viewModel.stegoMode == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
@@ -119,7 +126,10 @@ fun StegoScreen(
                         Text(text = stringResource(id = R.string.stego_create_mode), fontSize = 13.sp)
                     }
                     Button(
-                        onClick = { viewModel.stegoMode = 1 },
+                        onClick = {
+                            haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                            viewModel.stegoMode = 1
+                        },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (viewModel.stegoMode == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
                             contentColor = if (viewModel.stegoMode == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
@@ -190,12 +200,19 @@ fun StegoScreen(
 
                     Button(
                         onClick = {
+                            val startTime = System.currentTimeMillis()
                             viewModel.createStego(context) { ok ->
-                                Toast.makeText(
-                                    context,
-                                    if (ok) context.getString(R.string.stego_create_success) else context.getString(R.string.stego_failed),
-                                    Toast.LENGTH_LONG
-                                ).show()
+                                val durationMs = System.currentTimeMillis() - startTime
+                                if (ok) {
+                                    haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                                    Toast.makeText(
+                                        context,
+                                        "${context.getString(R.string.stego_create_success)} · 耗时 ${durationMs}ms",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                } else {
+                                    Toast.makeText(context, context.getString(R.string.stego_failed), Toast.LENGTH_LONG).show()
+                                }
                             }
                         },
                         enabled = viewModel.stegoCoverUri != null && viewModel.stegoArchiveUri != null && !viewModel.isStegoProcessing,
@@ -333,12 +350,19 @@ fun StegoScreen(
 
                     Button(
                         onClick = {
+                            val startTime = System.currentTimeMillis()
                             viewModel.extractStego(context) { outName ->
-                                Toast.makeText(
-                                    context,
-                                    if (outName != null) "已提取至 Download/RePix: $outName" else context.getString(R.string.stego_failed),
-                                    Toast.LENGTH_LONG
-                                ).show()
+                                val durationMs = System.currentTimeMillis() - startTime
+                                if (outName != null) {
+                                    haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                                    Toast.makeText(
+                                        context,
+                                        "已提取至 Download/RePix: $outName · 耗时 ${durationMs}ms",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                } else {
+                                    Toast.makeText(context, context.getString(R.string.stego_failed), Toast.LENGTH_LONG).show()
+                                }
                             }
                         },
                         enabled = canExtract,

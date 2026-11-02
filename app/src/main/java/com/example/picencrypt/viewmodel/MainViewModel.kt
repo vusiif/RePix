@@ -37,6 +37,22 @@ class MainViewModel : ViewModel() {
     var isShowRequestWritePermissionDialog by mutableStateOf(false)
     var isShowMethodAndKeySettingOnTopLayer by mutableStateOf(false)
 
+    // ---------------- 全局偏好与触觉反馈设置 ----------------
+    var isHapticFeedbackEnabled by mutableStateOf(true)
+
+    fun initPreferences(context: Context) {
+        val sp = context.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
+        isHapticFeedbackEnabled = sp.getBoolean("key_haptic_feedback", true)
+    }
+
+    fun setHapticFeedbackEnabled(enabled: Boolean, context: Context? = null) {
+        isHapticFeedbackEnabled = enabled
+        context?.let {
+            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
+            sp.edit().putBoolean("key_haptic_feedback", enabled).apply()
+        }
+    }
+
     // ---------------- Tab 0: 图片混淆状态 ----------------
     val images = mutableStateListOf<MyImage>()
     var selectedAlgorithm by mutableStateOf(Algorithm.TOMATO)

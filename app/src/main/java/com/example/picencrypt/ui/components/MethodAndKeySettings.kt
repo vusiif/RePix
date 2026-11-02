@@ -2,6 +2,7 @@ package com.example.picencrypt.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +48,7 @@ fun MethodAndKeySettings(
     isExpandedAllowed: Boolean = true
 ) {
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
 
     ExposedDropdownMenuBox(
         expanded = viewModel.isDropdownMenuExpanded && isExpandedAllowed,
@@ -127,6 +130,30 @@ fun MethodAndKeySettings(
         Switch(
             checked = viewModel.isCompatMode,
             onCheckedChange = { viewModel.isCompatMode = it }
+        )
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .padding(horizontal = 10.dp, vertical = 2.dp)
+            .width(280.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(
+                text = "触觉震动反馈",
+                fontSize = 14.sp
+            )
+            Text(
+                text = "操作完成与交互时振动确认",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = viewModel.isHapticFeedbackEnabled,
+            onCheckedChange = { viewModel.setHapticFeedbackEnabled(it, context) }
         )
     }
 

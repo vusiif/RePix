@@ -64,6 +64,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.picencrypt.R
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.example.picencrypt.utils.performHapticIf
 import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.MirageTankBridge
 import com.example.picencrypt.utils.MiragePresetGenerator
@@ -77,6 +80,7 @@ fun MirageScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val scrollState = rememberScrollState()
     var isViewingMiragePreview by remember { mutableStateOf(false) }
 
@@ -124,6 +128,7 @@ fun MirageScreen(
                 ) {
                     Button(
                         onClick = {
+                            haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                             viewModel.mirageIsColoredMode = true
                             viewModel.miragePreviewBitmap = null
                         },
@@ -138,6 +143,7 @@ fun MirageScreen(
                     }
                     Button(
                         onClick = {
+                            haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                             viewModel.mirageIsColoredMode = false
                             viewModel.miragePreviewBitmap = null
                         },
@@ -172,6 +178,7 @@ fun MirageScreen(
                         FilterChip(
                             selected = false,
                             onClick = {
+                                haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                                 viewModel.loadMiragePreset(MiragePresetGenerator.PresetTheme.DAY_AND_NIGHT, context)
                             },
                             label = { Text(text = stringResource(id = R.string.mirage_preset_day_night), fontSize = 11.sp) },
@@ -180,6 +187,7 @@ fun MirageScreen(
                         FilterChip(
                             selected = false,
                             onClick = {
+                                haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                                 viewModel.loadMiragePreset(MiragePresetGenerator.PresetTheme.QUESTION_AND_TRUTH, context)
                             },
                             label = { Text(text = stringResource(id = R.string.mirage_preset_question_truth), fontSize = 11.sp) }
@@ -203,6 +211,7 @@ fun MirageScreen(
                         FilterChip(
                             selected = viewModel.mirageScaleMode == MirageTankBridge.MirageScaleMode.FIT,
                             onClick = {
+                                haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                                 viewModel.mirageScaleMode = MirageTankBridge.MirageScaleMode.FIT
                                 viewModel.miragePreviewBitmap = null
                             },
@@ -212,6 +221,7 @@ fun MirageScreen(
                         FilterChip(
                             selected = viewModel.mirageScaleMode == MirageTankBridge.MirageScaleMode.CROP,
                             onClick = {
+                                haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                                 viewModel.mirageScaleMode = MirageTankBridge.MirageScaleMode.CROP
                                 viewModel.miragePreviewBitmap = null
                             },
@@ -221,6 +231,7 @@ fun MirageScreen(
                         FilterChip(
                             selected = viewModel.mirageScaleMode == MirageTankBridge.MirageScaleMode.STRETCH,
                             onClick = {
+                                haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                                 viewModel.mirageScaleMode = MirageTankBridge.MirageScaleMode.STRETCH
                                 viewModel.miragePreviewBitmap = null
                             },
@@ -247,7 +258,10 @@ fun MirageScreen(
 
                 // 互换表里图按钮
                 OutlinedButton(
-                    onClick = { viewModel.swapMirageImages() },
+                    onClick = {
+                        haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                        viewModel.swapMirageImages()
+                    },
                     enabled = viewModel.mirageCoverUri != null || viewModel.mirageHiddenUri != null,
                     modifier = Modifier.height(36.dp),
                     shape = RoundedCornerShape(18.dp)
@@ -393,7 +407,10 @@ fun MirageScreen(
                                 horizontalArrangement = Arrangement.End
                             ) {
                                 OutlinedButton(
-                                    onClick = { viewModel.resetMirageAdjustments() },
+                                    onClick = {
+                                        haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                                        viewModel.resetMirageAdjustments()
+                                    },
                                     modifier = Modifier.height(32.dp),
                                     shape = RoundedCornerShape(16.dp)
                                 ) {
@@ -409,8 +426,13 @@ fun MirageScreen(
                 // 生成 / 刷新预览按钮
                 Button(
                     onClick = {
+                        val startTime = System.currentTimeMillis()
                         viewModel.generateMiragePreview(context) { success ->
-                            if (!success) {
+                            val durationMs = System.currentTimeMillis() - startTime
+                            if (success) {
+                                haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                                Toast.makeText(context, "幻影坦克预览生成完毕 · 耗时 ${durationMs}ms", Toast.LENGTH_SHORT).show()
+                            } else {
                                 Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -481,19 +503,28 @@ fun MirageScreen(
                     ) {
                         FilterChip(
                             selected = viewModel.mirageBgMode == 0,
-                            onClick = { viewModel.mirageBgMode = 0 },
+                            onClick = {
+                                haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                                viewModel.mirageBgMode = 0
+                            },
                             label = { Text(text = stringResource(id = R.string.mirage_bg_white), fontSize = 11.sp) },
                             colors = FilterChipDefaults.filterChipColors()
                         )
                         FilterChip(
                             selected = viewModel.mirageBgMode == 1,
-                            onClick = { viewModel.mirageBgMode = 1 },
+                            onClick = {
+                                haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                                viewModel.mirageBgMode = 1
+                            },
                             label = { Text(text = stringResource(id = R.string.mirage_bg_black), fontSize = 11.sp) },
                             colors = FilterChipDefaults.filterChipColors()
                         )
                         FilterChip(
                             selected = viewModel.mirageBgMode == 2,
-                            onClick = { viewModel.mirageBgMode = 2 },
+                            onClick = {
+                                haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                                viewModel.mirageBgMode = 2
+                            },
                             label = { Text(text = stringResource(id = R.string.mirage_bg_checker), fontSize = 11.sp) },
                             colors = FilterChipDefaults.filterChipColors()
                         )
@@ -549,12 +580,15 @@ fun MirageScreen(
                     // 保存到相册按钮
                     Button(
                         onClick = {
+                            val startTime = System.currentTimeMillis()
                             viewModel.saveMiragePreview(context) { saved ->
-                                Toast.makeText(
-                                    context,
-                                    if (saved) context.getString(R.string.mirage_success) else context.getString(R.string.mirage_failed),
-                                    Toast.LENGTH_LONG
-                                ).show()
+                                val durationMs = System.currentTimeMillis() - startTime
+                                if (saved) {
+                                    haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                                    Toast.makeText(context, "${context.getString(R.string.mirage_success)} · 耗时 ${durationMs}ms", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, context.getString(R.string.mirage_failed), Toast.LENGTH_LONG).show()
+                                }
                             }
                         },
                         enabled = !viewModel.isMirageProcessing,

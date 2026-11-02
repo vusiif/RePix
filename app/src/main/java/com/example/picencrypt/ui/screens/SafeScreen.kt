@@ -57,6 +57,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.picencrypt.R
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.example.picencrypt.utils.performHapticIf
 import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.PasswordStrength
 import com.example.picencrypt.utils.PasswordStrengthEvaluator
@@ -70,6 +73,7 @@ fun SafeScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val scrollState = rememberScrollState()
     var isPasswordVisible by remember { mutableStateOf(false) }
 
@@ -105,6 +109,7 @@ fun SafeScreen(
                     modifier = Modifier
                         .weight(1f)
                         .clickable {
+                            haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                             viewModel.safeMode = 0
                             viewModel.safeSourceUri = null
                             viewModel.safeSourceFileName = ""
@@ -127,6 +132,7 @@ fun SafeScreen(
                     modifier = Modifier
                         .weight(1f)
                         .clickable {
+                            haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                             viewModel.safeMode = 1
                             viewModel.safeSourceUri = null
                             viewModel.safeSourceFileName = ""
@@ -371,10 +377,16 @@ fun SafeScreen(
                 onClick = {
                     if (viewModel.safeMode == 0) {
                         viewModel.executeSafeEncryption(context) { success, msg ->
+                            if (success) {
+                                haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                            }
                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                         }
                     } else {
                         viewModel.executeSafeDecryption(context) { success, msg ->
+                            if (success) {
+                                haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                            }
                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                         }
                     }
