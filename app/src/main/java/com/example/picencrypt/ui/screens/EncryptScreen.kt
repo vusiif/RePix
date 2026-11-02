@@ -352,8 +352,8 @@ fun EncryptScreen(
                         .padding(bottom = 15.dp)
                         .clip(RoundedCornerShape(20.dp))
                         .background(
-                            if (isSystemInDarkTheme()) Color(50, 50, 50)
-                            else Color(245, 240, 242)
+                            if (isSystemInDarkTheme()) Color(0xFF232326)
+                            else Color(0xFFF3EDF7)
                         )
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
@@ -677,7 +677,7 @@ fun EncryptScreen(
                 Row(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(Color(149, 117, 205, 255))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Icon(
                         Icons.Rounded.Add,
@@ -699,7 +699,7 @@ fun EncryptScreen(
                 Row(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(Color(149, 117, 205, 255))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Icon(
                         Icons.Rounded.KeyboardArrowUp,
@@ -743,18 +743,28 @@ fun HistogramChart(
         val binCount = 32
         val binWidth = w / binCount
 
+        // Background reference grid lines for spectrum distribution
+        val gridColor = Color.Gray.copy(alpha = 0.22f)
+        drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, h * 0.25f), androidx.compose.ui.geometry.Offset(w, h * 0.25f), strokeWidth = 1f)
+        drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, h * 0.50f), androidx.compose.ui.geometry.Offset(w, h * 0.50f), strokeWidth = 1f)
+        drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, h * 0.75f), androidx.compose.ui.geometry.Offset(w, h * 0.75f), strokeWidth = 1f)
+        drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, h), androidx.compose.ui.geometry.Offset(w, h), strokeWidth = 2f)
+
         fun drawChannel(hist: FloatArray, color: Color) {
-            val path = Path()
-            path.moveTo(0f, h)
+            val fillPath = Path()
+            val strokePath = Path()
+            fillPath.moveTo(0f, h)
             for (i in 0 until binCount) {
                 val value = hist.getOrElse(i) { 0f }.coerceIn(0f, 1f)
                 val x = i * binWidth + binWidth / 2f
                 val y = h - (value * h * 0.88f)
-                path.lineTo(x, y)
+                fillPath.lineTo(x, y)
+                if (i == 0) strokePath.moveTo(x, y) else strokePath.lineTo(x, y)
             }
-            path.lineTo(w, h)
-            path.close()
-            drawPath(path, color.copy(alpha = 0.32f))
+            fillPath.lineTo(w, h)
+            fillPath.close()
+            drawPath(fillPath, color.copy(alpha = 0.28f))
+            drawPath(strokePath, color.copy(alpha = 0.85f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
         }
 
         drawChannel(rHist, Color.Red)

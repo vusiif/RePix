@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,7 +58,7 @@ fun AppAboutDialog(
                 .clip(RoundedCornerShape(10.dp))
                 .fillMaxWidth(0.8f)
                 .background(
-                    if (isSystemInDarkTheme()) Color(50, 50, 50) else Color(250, 250, 250)
+                    if (isSystemInDarkTheme()) Color(0xFF1E1E1E) else Color(0xFFFBFBFB)
                 )
         ) {
             Box(contentAlignment = Alignment.TopCenter) {
