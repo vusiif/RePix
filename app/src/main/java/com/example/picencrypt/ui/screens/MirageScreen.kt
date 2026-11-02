@@ -42,6 +42,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,6 +67,7 @@ import com.example.picencrypt.R
 import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.MirageTankBridge
 import com.example.picencrypt.viewmodel.MainViewModel
+import com.example.picencrypt.ui.components.ImageViewerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +77,7 @@ fun MirageScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    var isViewingMiragePreview by remember { mutableStateOf(false) }
 
     val mirageCoverLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
@@ -498,7 +504,8 @@ fun MirageScreen(
                             contentDescription = "Mirage Preview",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(8.dp),
+                                .padding(8.dp)
+                                .clickable { isViewingMiragePreview = true },
                             contentScale = ContentScale.Fit
                         )
                     }
@@ -537,6 +544,14 @@ fun MirageScreen(
                     }
                 }
             }
+        }
+        if (isViewingMiragePreview && preview != null) {
+            ImageViewerDialog(
+                bitmap = preview,
+                title = stringResource(id = R.string.mirage_tool_title) + " 预览",
+                subtitle = "${preview.width} × ${preview.height} (无损 PNG 预览)",
+                onDismiss = { isViewingMiragePreview = false }
+            )
         }
         Spacer(modifier = Modifier.height(24.dp))
     }

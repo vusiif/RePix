@@ -72,6 +72,7 @@ import androidx.core.content.ContextCompat
 import com.example.picencrypt.R
 import com.example.picencrypt.model.Algorithm
 import com.example.picencrypt.ui.components.MethodAndKeySettings
+import com.example.picencrypt.ui.components.ImageViewerDialog
 import com.example.picencrypt.utils.ImageScramble.ProcessType
 import com.example.picencrypt.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
@@ -83,6 +84,7 @@ fun EncryptScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    var viewingImage by remember { mutableStateOf<com.example.picencrypt.model.MyImage?>(null) }
     val focusManager = LocalFocusManager.current
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -413,10 +415,20 @@ fun EncryptScreen(
 
                             Image(
                                 bitmap = item.thumbnail.asImageBitmap(),
-                                contentDescription = null,
+                                contentDescription = stringResource(id = R.string.view_full_image_hint),
                                 modifier = Modifier
-                                    .padding(start = 15.dp, end = 15.dp, bottom = 6.dp)
+                                    .padding(start = 15.dp, end = 15.dp, bottom = 4.dp)
                                     .clip(RoundedCornerShape(10.dp))
+                                    .clickable { viewingImage = item }
+                            )
+
+                            Text(
+                                text = stringResource(id = R.string.view_full_image_hint),
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(bottom = 6.dp)
+                                    .clickable { viewingImage = item }
                             )
 
                             // 混淆质量指标与直方图分析条 (F3)
@@ -702,6 +714,15 @@ fun EncryptScreen(
                     )
                 }
             }
+        }
+        val currentViewing = viewingImage
+        if (currentViewing != null) {
+            ImageViewerDialog(
+                bitmap = currentViewing.bitmap,
+                title = currentViewing.filename,
+                subtitle = "${currentViewing.originalWidth} × ${currentViewing.originalHeight}",
+                onDismiss = { viewingImage = null }
+            )
         }
     }
 }

@@ -138,4 +138,8 @@
     <string name="mirage_hidden_brightness">里图亮度增强: %1$d</string>
     <string name="mirage_hidden_contrast">里图对比度: %1$.2fx</string>
     <string name="mirage_adjust_hint">💡 适当提亮表图或增强里图对比度，可显著强化黑白底下的欺骗视觉反差</string>
+
+    <!-- 大图查看器 -->
+    <string name="view_full_image_hint">🔍 点击放大与平移细节</string>
+    <string name="image_viewer_title">大图细节预览</string>
 </resources>
