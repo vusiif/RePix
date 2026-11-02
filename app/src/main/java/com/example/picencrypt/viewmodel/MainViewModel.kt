@@ -95,7 +95,7 @@ class MainViewModel : ViewModel() {
         isDropdownMenuExpanded = false
     }
 
-    fun addImages(uris: List<Uri>, context: Context, onComplete: () -> Unit) {
+    fun addImages(uris: List<Uri>, context: Context, onComplete: () -> Unit = {}) {
         if (uris.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             isShowProgress = true

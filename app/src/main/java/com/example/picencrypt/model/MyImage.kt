@@ -13,6 +13,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import com.example.picencrypt.R
 import com.example.picencrypt.utils.BlockScramble
+import com.example.picencrypt.utils.ExifUtils
 import com.example.picencrypt.utils.ImageMetrics
 import com.example.picencrypt.utils.ImageMetricsHelper
 import com.example.picencrypt.utils.ImageScramble.Image
@@ -53,6 +54,9 @@ class MyImage(
     var originalHeight: Int = 0
         private set
 
+    var exifInfo: ExifUtils.ExifInfo? = null
+        private set
+
     private var _bitmap: Bitmap? = null
 
     /**
@@ -88,6 +92,7 @@ class MyImage(
             }
             originalWidth = boundsOptions.outWidth.coerceAtLeast(0)
             originalHeight = boundsOptions.outHeight.coerceAtLeast(0)
+            exifInfo = ExifUtils.readExif(appContext, uri)
         } catch (_: Exception) {}
     }
 
