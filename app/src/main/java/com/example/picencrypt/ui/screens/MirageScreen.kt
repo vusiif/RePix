@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import com.example.picencrypt.R
 import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.MirageTankBridge
+import com.example.picencrypt.utils.MiragePresetGenerator
 import com.example.picencrypt.viewmodel.MainViewModel
 import com.example.picencrypt.ui.components.ImageViewerDialog
 
@@ -152,6 +153,39 @@ fun MirageScreen(
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
+
+                // 演示示例预设快捷芯片 (Demo Presets)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = stringResource(id = R.string.mirage_presets_title),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row {
+                        FilterChip(
+                            selected = false,
+                            onClick = {
+                                viewModel.loadMiragePreset(MiragePresetGenerator.PresetTheme.DAY_AND_NIGHT, context)
+                            },
+                            label = { Text(text = stringResource(id = R.string.mirage_preset_day_night), fontSize = 11.sp) },
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                        FilterChip(
+                            selected = false,
+                            onClick = {
+                                viewModel.loadMiragePreset(MiragePresetGenerator.PresetTheme.QUESTION_AND_TRUTH, context)
+                            },
+                            label = { Text(text = stringResource(id = R.string.mirage_preset_question_truth), fontSize = 11.sp) }
+                        )
+                    }
+                }
 
                 // 比例适配模式选择 (Fit 自适应 / Crop 裁切 / Stretch 拉伸)
                 Row(

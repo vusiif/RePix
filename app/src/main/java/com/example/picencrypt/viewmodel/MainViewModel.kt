@@ -21,6 +21,7 @@ import com.example.picencrypt.utils.CryptoUtils
 import com.example.picencrypt.utils.SteganographyHelper
 import com.example.picencrypt.utils.ImageScramble.ProcessType
 import com.example.picencrypt.utils.MirageTankBridge
+import com.example.picencrypt.utils.MiragePresetGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -441,6 +442,17 @@ class MainViewModel : ViewModel() {
                 }
             }
         }
+    }
+
+    fun loadMiragePreset(theme: MiragePresetGenerator.PresetTheme, context: Context) {
+        val (coverBmp, hiddenBmp) = MiragePresetGenerator.generatePresetBitmaps(theme)
+        val (coverUri, hiddenUri) = MiragePresetGenerator.createPresetUris(context, theme)
+        mirageCoverUri = coverUri
+        mirageHiddenUri = hiddenUri
+        mirageCoverThumbnail = Bitmap.createScaledBitmap(coverBmp, 140, 140, true)
+        mirageHiddenThumbnail = Bitmap.createScaledBitmap(hiddenBmp, 140, 140, true)
+        miragePreviewBitmap = null
+        generateMiragePreview(context)
     }
 
     fun swapMirageImages() {

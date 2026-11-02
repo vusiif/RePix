@@ -142,4 +142,9 @@
     <!-- 大图查看器 -->
     <string name="view_full_image_hint">🔍 点击放大与平移细节</string>
     <string name="image_viewer_title">大图细节预览</string>
+
+    <!-- 幻影坦克预设 -->
+    <string name="mirage_presets_title">🪄 示例预设:</string>
+    <string name="mirage_preset_day_night">☀️ 日夜奇景</string>
+    <string name="mirage_preset_question_truth">❓ 疑问真相</string>
 </resources>
