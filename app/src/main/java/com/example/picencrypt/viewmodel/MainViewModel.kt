@@ -159,6 +159,15 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    fun loadDemoSample(context: Context, onComplete: () -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val demoUri = com.example.picencrypt.utils.DemoImageGenerator.createDemoImageUri(context)
+            withContext(Dispatchers.Main) {
+                addImages(listOf(demoUri), context, onComplete)
+            }
+        }
+    }
+
     fun removeImageAt(index: Int) {
         if (index in images.indices) {
             images.removeAt(index)

@@ -165,4 +165,12 @@
     <string name="theme_follow_system">跟随系统</string>
     <string name="theme_light">浅色模式</string>
     <string name="theme_dark">深色模式</string>
+    <!-- 空状态引导文案 -->
+    <string name="empty_state_title">暂无待处理图片</string>
+    <string name="empty_state_subtitle">支持从相册选取单张或批量图片，亦可在其他应用直接分享转入。</string>
+    <string name="empty_state_badge_scramble">6 大像素置乱算法</string>
+    <string name="empty_state_badge_metrics">实时香农熵值分析</string>
+    <string name="empty_state_badge_lossless">多格式无损导出</string>
+    <string name="empty_state_btn_select">选取相册图片</string>
+    <string name="empty_state_btn_demo">载入官方体验样本</string>
 </resources>

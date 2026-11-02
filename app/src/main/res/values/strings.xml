@@ -165,4 +165,12 @@
     <string name="theme_follow_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
+    <!-- 空状态引导文案 -->
+    <string name="empty_state_title">No Images Selected</string>
+    <string name="empty_state_subtitle">Select images from your gallery, or share directly to RePix from other apps.</string>
+    <string name="empty_state_badge_scramble">Multi-core Scrambling</string>
+    <string name="empty_state_badge_metrics">Real-time Entropy</string>
+    <string name="empty_state_badge_lossless">Lossless Formats</string>
+    <string name="empty_state_btn_select">Select Images</string>
+    <string name="empty_state_btn_demo">Load Demo Sample</string>
 </resources>
