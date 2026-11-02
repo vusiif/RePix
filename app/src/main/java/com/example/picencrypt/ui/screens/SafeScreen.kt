@@ -58,6 +58,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.picencrypt.R
 import com.example.picencrypt.utils.FileUtils
+import com.example.picencrypt.utils.PasswordStrength
+import com.example.picencrypt.utils.PasswordStrengthEvaluator
+import androidx.compose.ui.graphics.Color
 import com.example.picencrypt.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -319,6 +322,47 @@ fun SafeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )
+
+            // 加密模式下的密码强度实时指示条
+            if (viewModel.safeMode == 0 && viewModel.safePassword.isNotEmpty()) {
+                val strength = PasswordStrengthEvaluator.evaluate(viewModel.safePassword)
+                val (strengthColor, strengthLabel) = when (strength) {
+                    PasswordStrength.VERY_WEAK -> Pair(Color(0xFFE53935), stringResource(id = R.string.password_strength_very_weak))
+                    PasswordStrength.WEAK -> Pair(Color(0xFFFB8C00), stringResource(id = R.string.password_strength_weak))
+                    PasswordStrength.GOOD -> Pair(Color(0xFF1E88E5), stringResource(id = R.string.password_strength_good))
+                    PasswordStrength.STRONG -> Pair(Color(0xFF43A047), stringResource(id = R.string.password_strength_strong))
+                    PasswordStrength.EMPTY -> Pair(Color.Transparent, "")
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${stringResource(id = R.string.password_strength_label)}$strengthLabel",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = strengthColor
+                    )
+                    Text(
+                        text = stringResource(id = R.string.password_strength_hint),
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { strength.scoreRatio },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = strengthColor,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
 
             Spacer(modifier = Modifier.height(20.dp))
 

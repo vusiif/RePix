@@ -152,4 +152,12 @@
     <string name="export_hint_png" formatted="false">🛡️ 经典无损：100% 保持各通道像素精度，推荐算法置乱使用</string>
     <string name="export_hint_webp" formatted="false">⚡ 推荐无损：WebP 无损高压缩，节省 ~40% 空间且 100% 可逆</string>
     <string name="export_hint_jpeg">⚠️ 有损压缩：JPEG 压缩会破坏高频像素细节，可能导致后续解密失真</string>
+
+    <!-- 密码强度评估 -->
+    <string name="password_strength_label">强度: </string>
+    <string name="password_strength_very_weak">极弱</string>
+    <string name="password_strength_weak">较弱</string>
+    <string name="password_strength_good">良好</string>
+    <string name="password_strength_strong">强 (推荐)</string>
+    <string name="password_strength_hint">💡 建议混合大小写字母、数字与特殊符号</string>
 </resources>
