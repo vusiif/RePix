@@ -58,6 +58,20 @@ import com.example.picencrypt.ui.screens.SafeScreen
 import com.example.picencrypt.ui.screens.StegoScreen
 import androidx.compose.foundation.isSystemInDarkTheme
 import com.example.picencrypt.model.AppThemeMode
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.example.picencrypt.utils.performHapticIf
 import com.example.picencrypt.ui.theme.PicEncryptTheme
 import com.example.picencrypt.viewmodel.MainViewModel
 
@@ -127,6 +141,14 @@ fun MainApp(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+
+    fun switchTab(targetTab: Int) {
+        if (viewModel.currentTab != targetTab) {
+            haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+            viewModel.currentTab = targetTab
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -170,7 +192,7 @@ fun MainApp(
                 NavigationBar {
                     NavigationBarItem(
                         selected = viewModel.currentTab == 0,
-                        onClick = { viewModel.currentTab = 0 },
+                        onClick = { switchTab(0) },
                         icon = {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_launcher_background),
@@ -182,7 +204,7 @@ fun MainApp(
                     )
                     NavigationBarItem(
                         selected = viewModel.currentTab == 1,
-                        onClick = { viewModel.currentTab = 1 },
+                        onClick = { switchTab(1) },
                         icon = {
                             Icon(
                                 painter = painterResource(id = R.drawable.import_download_icon_176152),
@@ -194,7 +216,7 @@ fun MainApp(
                     )
                     NavigationBarItem(
                         selected = viewModel.currentTab == 2,
-                        onClick = { viewModel.currentTab = 2 },
+                        onClick = { switchTab(2) },
                         icon = {
                             Icon(
                                 painter = painterResource(id = R.drawable.crop_rotate_119243),
@@ -206,7 +228,7 @@ fun MainApp(
                     )
                     NavigationBarItem(
                         selected = viewModel.currentTab == 3,
-                        onClick = { viewModel.currentTab = 3 },
+                        onClick = { switchTab(3) },
                         icon = {
                             Icon(
                                 imageVector = Icons.Rounded.Lock,
@@ -224,16 +246,42 @@ fun MainApp(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                // 页面路由
-                when (viewModel.currentTab) {
-                    0 -> EncryptScreen(viewModel = viewModel)
-                    1 -> StegoScreen(viewModel = viewModel)
-                    2 -> MirageScreen(viewModel = viewModel)
-                    3 -> SafeScreen(viewModel = viewModel)
+                // 页面路由 (带共享轴平滑动效)
+                AnimatedContent(
+                    targetState = viewModel.currentTab,
+                    transitionSpec = {
+                        if (targetState > initialState) {
+                            (slideInHorizontally(animationSpec = tween(260, easing = FastOutSlowInEasing)) { width -> width / 4 } +
+                                fadeIn(animationSpec = tween(220)))
+                                .togetherWith(
+                                    slideOutHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { width -> -width / 4 } +
+                                        fadeOut(animationSpec = tween(180))
+                                )
+                        } else {
+                            (slideInHorizontally(animationSpec = tween(260, easing = FastOutSlowInEasing)) { width -> -width / 4 } +
+                                fadeIn(animationSpec = tween(220)))
+                                .togetherWith(
+                                    slideOutHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing)) { width -> width / 4 } +
+                                        fadeOut(animationSpec = tween(180))
+                                )
+                        }
+                    },
+                    label = "MainTabTransition"
+                ) { tab ->
+                    when (tab) {
+                        0 -> EncryptScreen(viewModel = viewModel)
+                        1 -> StegoScreen(viewModel = viewModel)
+                        2 -> MirageScreen(viewModel = viewModel)
+                        3 -> SafeScreen(viewModel = viewModel)
+                    }
                 }
 
-                // 顶层全局设置弹层
-                if (viewModel.isShowMethodAndKeySettingOnTopLayer) {
+                // 顶层全局设置弹层 (柔和淡入微缩放过渡)
+                AnimatedVisibility(
+                    visible = viewModel.isShowMethodAndKeySettingOnTopLayer,
+                    enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.92f, animationSpec = tween(240, easing = FastOutSlowInEasing)),
+                    exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.92f, animationSpec = tween(180))
+                ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
