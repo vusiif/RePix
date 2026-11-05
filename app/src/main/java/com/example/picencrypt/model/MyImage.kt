@@ -279,10 +279,18 @@ class MyImage(
         thumbnail = loadThumbnailFromUri()
     }
 
+    /**
+     * Clears all sensitive EXIF privacy metadata in memory.
+     */
+    fun stripExifPrivacy() {
+        exifInfo = ExifUtils.cleanExif()
+    }
+
     fun saveWithDetail(
         index: Int = 0,
         format: ImageExportFormat = ImageExportFormat.PNG,
-        quality: Int = format.defaultQuality
+        quality: Int = format.defaultQuality,
+        stripExif: Boolean = true
     ): SaveResult {
         val dateTime = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         var ms = System.currentTimeMillis()
@@ -322,6 +330,9 @@ class MyImage(
                 FileOutputStream(filePath).use { out ->
                     currentBmp.compress(compressFormat, quality, out)
                     out.flush()
+                }
+                if (stripExif) {
+                    ExifUtils.stripExifFile(filePath)
                 }
                 FileUtils.notifyMediaScanner(appContext, filePath, format.mimeType)
                 SaveResult.Success

@@ -37,7 +37,9 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -91,6 +93,7 @@ fun EncryptScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     var viewingImage by remember { mutableStateOf<com.example.picencrypt.model.MyImage?>(null) }
+    var inspectingExifIndex by remember { mutableStateOf<Int?>(null) }
     val focusManager = LocalFocusManager.current
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -418,17 +421,37 @@ fun EncryptScreen(
                                     )
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (item.exifInfo?.hasGps == true) {
+                                    val exif = item.exifInfo
+                                    if (exif != null && !exif.isClean) {
+                                        val hasGps = exif.hasGps
                                         Surface(
                                             shape = RoundedCornerShape(6.dp),
-                                            color = MaterialTheme.colorScheme.errorContainer,
-                                            modifier = Modifier.padding(end = 6.dp)
+                                            color = if (hasGps) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                                            modifier = Modifier
+                                                .padding(end = 6.dp)
+                                                .clickable { inspectingExifIndex = i }
                                         ) {
                                             Text(
-                                                text = "📍 含GPS",
+                                                text = if (hasGps) "📍 含GPS" else "ℹ️ 含EXIF",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                color = if (hasGps) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    } else if (exif != null && exif.isClean) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                            modifier = Modifier
+                                                .padding(end = 6.dp)
+                                                .clickable { inspectingExifIndex = i }
+                                        ) {
+                                            Text(
+                                                text = "🛡️ 无隐私",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                             )
                                         }
@@ -769,6 +792,21 @@ fun EncryptScreen(
                 onDismiss = { viewingImage = null }
             )
         }
+
+        val inspectingIndex = inspectingExifIndex
+        if (inspectingIndex != null && inspectingIndex in viewModel.images.indices) {
+            val inspectingItem = viewModel.images[inspectingIndex]
+            ExifPrivacyDialog(
+                image = inspectingItem,
+                onDismiss = { inspectingExifIndex = null },
+                onStripExif = {
+                    haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                    viewModel.stripImageExifAt(inspectingIndex)
+                    Toast.makeText(context, context.getString(R.string.exif_privacy_stripped_toast), Toast.LENGTH_SHORT).show()
+                    inspectingExifIndex = null
+                }
+            )
+        }
     }
 }
 
@@ -936,5 +974,127 @@ fun EmptyStateCard(
                 )
             }
         }
+    }
+}
+
+
+/**
+ * EXIF 隐私元数据报告与一键脱敏对话框
+ */
+@Composable
+fun ExifPrivacyDialog(
+    image: com.example.picencrypt.model.MyImage,
+    onDismiss: () -> Unit,
+    onStripExif: () -> Unit
+) {
+    val info = image.exifInfo
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "🛡️ ")
+                Text(
+                    text = stringResource(id = R.string.exif_privacy_dialog_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Text(
+                    text = image.filename,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (info == null || info.isClean) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "✨ 该图片暂无检测到 GPS 地理位置或敏感设备元数据，状态十分安全！",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                } else {
+                    if (info.hasGps && info.formatCoordinates() != null) {
+                        PrivacyInfoRow(
+                            label = stringResource(id = R.string.exif_privacy_gps_label),
+                            value = info.formatCoordinates()!!,
+                            isWarning = true
+                        )
+                    }
+                    val dev = info.getDeviceDescription()
+                    if (dev != null) {
+                        PrivacyInfoRow(
+                            label = stringResource(id = R.string.exif_privacy_device_label),
+                            value = dev,
+                            isWarning = false
+                        )
+                    }
+                    if (!info.dateTime.isNullOrBlank()) {
+                        PrivacyInfoRow(
+                            label = stringResource(id = R.string.exif_privacy_datetime_label),
+                            value = info.dateTime,
+                            isWarning = false
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "⚠️ 包含 GPS 地理坐标的照片若在社交平台原图发送，可能会暴露精确居住或出行位置隐私。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (info != null && !info.isClean) {
+                Button(
+                    onClick = onStripExif,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(text = stringResource(id = R.string.exif_privacy_btn_strip))
+                }
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text(text = "关闭")
+            }
+        }
+    )
+}
+
+@Composable
+private fun PrivacyInfoRow(label: String, value: String, isWarning: Boolean) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+        )
     }
 }

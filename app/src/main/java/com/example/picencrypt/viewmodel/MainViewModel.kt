@@ -41,12 +41,14 @@ class MainViewModel : ViewModel() {
     // ---------------- 全局偏好、主题外观与触觉反馈设置 ----------------
     var isHapticFeedbackEnabled by mutableStateOf(true)
     var appThemeMode by mutableStateOf(AppThemeMode.FOLLOW_SYSTEM)
+    var isStripExifOnExport by mutableStateOf(true)
 
     fun initPreferences(context: Context) {
         val sp = context.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
         isHapticFeedbackEnabled = sp.getBoolean("key_haptic_feedback", true)
         val themeId = sp.getInt("key_theme_mode", AppThemeMode.FOLLOW_SYSTEM.id)
         appThemeMode = AppThemeMode.fromId(themeId)
+        isStripExifOnExport = sp.getBoolean("key_strip_exif_on_export", true)
     }
 
     fun setHapticFeedbackEnabled(enabled: Boolean, context: Context? = null) {
@@ -62,6 +64,14 @@ class MainViewModel : ViewModel() {
         context?.let {
             val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
             sp.edit().putInt("key_theme_mode", mode.id).apply()
+        }
+    }
+
+    fun setStripExifOnExport(enabled: Boolean, context: Context? = null) {
+        isStripExifOnExport = enabled
+        context?.let {
+            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
+            sp.edit().putBoolean("key_strip_exif_on_export", enabled).apply()
         }
     }
 
@@ -291,6 +301,7 @@ class MainViewModel : ViewModel() {
     fun saveAllImages(onComplete: (successCount: Int, failCount: Int, durationMs: Long) -> Unit) {
         if (images.isEmpty() || isShowProgress) return
         val startTime = System.currentTimeMillis()
+        val stripSnapshot = isStripExifOnExport
         batchSaveJob = viewModelScope.launch(Dispatchers.IO) {
             isShowProgress = true
             progress = 0f
@@ -299,7 +310,7 @@ class MainViewModel : ViewModel() {
             var failCount = 0
             for (i in snapshot.indices) {
                 if (!isActive) break
-                val ok = snapshot[i].saveWithDetail(i, format = exportFormat) is com.example.picencrypt.model.SaveResult.Success
+                val ok = snapshot[i].saveWithDetail(i, format = exportFormat, stripExif = stripSnapshot) is com.example.picencrypt.model.SaveResult.Success
                 if (ok) successCount++ else failCount++
                 progress = (i + 1).toFloat() / snapshot.size
             }
@@ -347,6 +358,13 @@ class MainViewModel : ViewModel() {
             val item = images[index]
             item.rotate(180f)
             images[index] = item
+        }
+    }
+
+    fun stripImageExifAt(index: Int) {
+        if (index in images.indices) {
+            images[index].stripExifPrivacy()
+            images[index] = images[index]
         }
     }
 

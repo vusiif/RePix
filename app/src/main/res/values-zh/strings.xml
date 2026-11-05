@@ -173,4 +173,14 @@
     <string name="empty_state_badge_lossless">多格式无损导出</string>
     <string name="empty_state_btn_select">选取相册图片</string>
     <string name="empty_state_btn_demo">载入官方体验样本</string>
+    <!-- EXIF 隐私脱敏设置与弹窗 -->
+    <string name="strip_exif_label">导出时抹除 EXIF 隐私</string>
+    <string name="strip_exif_desc">保存时剥离照片 GPS 经纬度、拍摄设备与时间等敏感信息</string>
+    <string name="exif_privacy_dialog_title">EXIF 隐私元数据报告</string>
+    <string name="exif_privacy_gps_label">📍 地理位置 (GPS)</string>
+    <string name="exif_privacy_device_label">📱 拍摄设备</string>
+    <string name="exif_privacy_datetime_label">🕒 拍摄时间</string>
+    <string name="exif_privacy_btn_strip">🛡️ 立即一键脱敏擦除</string>
+    <string name="exif_privacy_clean_badge">🛡️ 已安全脱敏</string>
+    <string name="exif_privacy_stripped_toast">已成功抹除该图片的 EXIF 敏感信息！</string>
 </resources>

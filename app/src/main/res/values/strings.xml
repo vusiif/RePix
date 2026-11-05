@@ -173,4 +173,14 @@
     <string name="empty_state_badge_lossless">Lossless Formats</string>
     <string name="empty_state_btn_select">Select Images</string>
     <string name="empty_state_btn_demo">Load Demo Sample</string>
+    <!-- EXIF 隐私脱敏设置与弹窗 -->
+    <string name="strip_exif_label">Strip EXIF on Export</string>
+    <string name="strip_exif_desc">Remove GPS coordinates, device model, and timestamps from saved photos.</string>
+    <string name="exif_privacy_dialog_title">EXIF Privacy Metadata</string>
+    <string name="exif_privacy_gps_label">📍 Location (GPS)</string>
+    <string name="exif_privacy_device_label">📱 Device Model</string>
+    <string name="exif_privacy_datetime_label">🕒 Capture Time</string>
+    <string name="exif_privacy_btn_strip">🛡️ Strip Privacy Info</string>
+    <string name="exif_privacy_clean_badge">🛡️ Stripped</string>
+    <string name="exif_privacy_stripped_toast">EXIF privacy metadata has been stripped!</string>
 </resources>

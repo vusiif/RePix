@@ -162,6 +162,33 @@ fun MethodAndKeySettings(
         )
     }
 
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .padding(horizontal = 10.dp, vertical = 2.dp)
+            .width(280.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(
+                text = stringResource(id = R.string.strip_exif_label),
+                fontSize = 14.sp
+            )
+            Text(
+                text = stringResource(id = R.string.strip_exif_desc),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = viewModel.isStripExifOnExport,
+            onCheckedChange = {
+                haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                viewModel.setStripExifOnExport(it, context)
+            }
+        )
+    }
+
     Spacer(modifier = Modifier.height(6.dp))
 
     Row(
