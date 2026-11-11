@@ -42,6 +42,7 @@ class MainViewModel : ViewModel() {
     var isHapticFeedbackEnabled by mutableStateOf(true)
     var appThemeMode by mutableStateOf(AppThemeMode.FOLLOW_SYSTEM)
     var isStripExifOnExport by mutableStateOf(true)
+    var exportQuality by mutableIntStateOf(90)
 
     fun initPreferences(context: Context) {
         val sp = context.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
@@ -49,6 +50,9 @@ class MainViewModel : ViewModel() {
         val themeId = sp.getInt("key_theme_mode", AppThemeMode.FOLLOW_SYSTEM.id)
         appThemeMode = AppThemeMode.fromId(themeId)
         isStripExifOnExport = sp.getBoolean("key_strip_exif_on_export", true)
+        val formatName = sp.getString("key_export_format", ImageExportFormat.PNG.name) ?: ImageExportFormat.PNG.name
+        exportFormat = ImageExportFormat.entries.find { it.name == formatName } ?: ImageExportFormat.PNG
+        exportQuality = sp.getInt("key_export_quality", 90)
     }
 
     fun setHapticFeedbackEnabled(enabled: Boolean, context: Context? = null) {
@@ -72,6 +76,23 @@ class MainViewModel : ViewModel() {
         context?.let {
             val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
             sp.edit().putBoolean("key_strip_exif_on_export", enabled).apply()
+        }
+    }
+
+    fun setExportFormat(format: ImageExportFormat, context: Context? = null) {
+        exportFormat = format
+        context?.let {
+            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
+            sp.edit().putString("key_export_format", format.name).apply()
+        }
+    }
+
+    fun setExportQuality(quality: Int, context: Context? = null) {
+        val clamped = quality.coerceIn(10, 100)
+        exportQuality = clamped
+        context?.let {
+            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
+            sp.edit().putInt("key_export_quality", clamped).apply()
         }
     }
 
@@ -310,7 +331,12 @@ class MainViewModel : ViewModel() {
             var failCount = 0
             for (i in snapshot.indices) {
                 if (!isActive) break
-                val ok = snapshot[i].saveWithDetail(i, format = exportFormat, stripExif = stripSnapshot) is com.example.picencrypt.model.SaveResult.Success
+                val ok = snapshot[i].saveWithDetail(
+                    i,
+                    format = exportFormat,
+                    quality = exportQuality,
+                    stripExif = stripSnapshot
+                ) is com.example.picencrypt.model.SaveResult.Success
                 if (ok) successCount++ else failCount++
                 progress = (i + 1).toFloat() / snapshot.size
             }
@@ -380,7 +406,12 @@ class MainViewModel : ViewModel() {
         if (index !in images.indices) return
         val item = images[index]
         viewModelScope.launch(Dispatchers.IO) {
-            val result = item.saveWithDetail(index, format = exportFormat) is com.example.picencrypt.model.SaveResult.Success
+            val result = item.saveWithDetail(
+                index,
+                format = exportFormat,
+                quality = exportQuality,
+                stripExif = isStripExifOnExport
+            ) is com.example.picencrypt.model.SaveResult.Success
             withContext(Dispatchers.Main) {
                 onComplete(result)
             }

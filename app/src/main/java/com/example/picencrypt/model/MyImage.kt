@@ -305,7 +305,7 @@ class MyImage(
 
         return try {
             val currentBmp = bitmap
-            val compressFormat = format.getCompressFormat()
+            val compressFormat = format.getCompressFormat(quality)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, imageName)

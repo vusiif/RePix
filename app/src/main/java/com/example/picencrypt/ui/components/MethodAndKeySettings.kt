@@ -17,6 +17,7 @@ import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -38,6 +39,8 @@ import androidx.compose.ui.unit.sp
 import com.example.picencrypt.R
 import com.example.picencrypt.model.Algorithm
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import com.example.picencrypt.utils.ExportSizeEstimator
+import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.example.picencrypt.model.AppThemeMode
 import com.example.picencrypt.model.ImageExportFormat
@@ -289,7 +292,10 @@ fun MethodAndKeySettings(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable { viewModel.exportFormat = format }
+                    .clickable {
+                        haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                        viewModel.setExportFormat(format, context)
+                    }
             ) {
                 Text(
                     text = format.extension.uppercase(),
@@ -302,36 +308,160 @@ fun MethodAndKeySettings(
         }
     }
 
-    val (hintText, containerColor, textColor) = when (viewModel.exportFormat) {
-        ImageExportFormat.PNG -> Triple(
-            stringResource(id = R.string.export_hint_png),
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-            MaterialTheme.colorScheme.onSurfaceVariant
+    // Quality adjustment slider & presets (for WEBP and JPEG)
+    if (viewModel.exportFormat.supportsQualityAdjustment) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .padding(horizontal = 10.dp, vertical = 2.dp)
+                .width(280.dp)
+        ) {
+            Text(
+                text = stringResource(id = R.string.export_quality_label),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ) {
+                val qualityText = if (viewModel.exportFormat == ImageExportFormat.WEBP && viewModel.exportQuality >= 100) {
+                    stringResource(id = R.string.export_quality_lossless)
+                } else {
+                    stringResource(id = R.string.export_quality_value, viewModel.exportQuality)
+                }
+                Text(
+                    text = qualityText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
+        }
+
+        Slider(
+            value = viewModel.exportQuality.toFloat(),
+            onValueChange = { newVal ->
+                val q = newVal.roundToInt()
+                if (q != viewModel.exportQuality) {
+                    if (q % 5 == 0) {
+                        haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                    }
+                    viewModel.setExportQuality(q, context)
+                }
+            },
+            valueRange = 50f..100f,
+            steps = 49,
+            modifier = Modifier
+                .padding(horizontal = 10.dp)
+                .width(280.dp)
         )
-        ImageExportFormat.WEBP -> Triple(
-            stringResource(id = R.string.export_hint_webp),
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-            MaterialTheme.colorScheme.onPrimaryContainer
-        )
-        ImageExportFormat.JPEG -> Triple(
-            stringResource(id = R.string.export_hint_jpeg),
-            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
-            MaterialTheme.colorScheme.onErrorContainer
-        )
+
+        // Presets Chips
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .padding(horizontal = 10.dp, vertical = 2.dp)
+                .width(280.dp)
+        ) {
+            val presets = listOf(
+                Pair(95, stringResource(id = R.string.export_preset_high)),
+                Pair(85, stringResource(id = R.string.export_preset_balanced)),
+                Pair(70, stringResource(id = R.string.export_preset_compact))
+            )
+            for ((presetQ, label) in presets) {
+                val isSelected = viewModel.exportQuality == presetQ
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                            viewModel.setExportQuality(presetQ, context)
+                        }
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 10.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        }
     }
+
+    // Size Estimation
+    val sampleImage = viewModel.images.firstOrNull()
+    val refW = if ((sampleImage?.originalWidth ?: 0) > 0) sampleImage!!.originalWidth else 1920
+    val refH = if ((sampleImage?.originalHeight ?: 0) > 0) sampleImage!!.originalHeight else 1080
+    val estimatedBytes = ExportSizeEstimator.estimateBytes(refW, refH, viewModel.exportFormat, viewModel.exportQuality)
+    val formattedEst = ExportSizeEstimator.formatFileSize(estimatedBytes)
+    val ratioPercent = ExportSizeEstimator.relativeRatioPercent(viewModel.exportFormat, viewModel.exportQuality)
 
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = containerColor,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
         modifier = Modifier
             .padding(horizontal = 10.dp, vertical = 4.dp)
             .width(280.dp)
     ) {
-        Text(
-            text = hintText,
-            fontSize = 11.sp,
-            color = textColor,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-        )
+        ) {
+            Text(
+                text = stringResource(id = R.string.export_size_estimate_label),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "~$formattedEst ($ratioPercent%)",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+
+    // Lossy Warning vs Lossless Badge
+    if (viewModel.exportFormat.isLossy(viewModel.exportQuality)) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
+            modifier = Modifier
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+                .width(280.dp)
+        ) {
+            Text(
+                text = stringResource(id = R.string.export_lossy_warning),
+                fontSize = 10.5.sp,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+        }
+    } else {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+            modifier = Modifier
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+                .width(280.dp)
+        ) {
+            Text(
+                text = stringResource(id = R.string.export_lossless_badge),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+        }
     }
 }

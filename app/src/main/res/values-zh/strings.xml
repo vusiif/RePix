@@ -150,8 +150,17 @@
 
     <!-- 导出格式特性智能建议 -->
     <string name="export_hint_png" formatted="false">🛡️ 经典无损：100% 保持各通道像素精度，推荐算法置乱使用</string>
-    <string name="export_hint_webp" formatted="false">⚡ 推荐无损：WebP 无损高压缩，节省 ~40% 空间且 100% 可逆</string>
-    <string name="export_hint_jpeg">⚠️ 有损压缩：JPEG 压缩会破坏高频像素细节，可能导致后续解密失真</string>
+    <string name="export_hint_webp" formatted="false">⚡ 推荐格式：WebP 体积更小且支持无损/有损智能调节</string>
+    <string name="export_hint_jpeg">⚠️ 兼容格式：JPEG 适合通用分享，但有损压缩可能导致后续解密失真</string>
+    <string name="export_quality_label">压缩质量</string>
+    <string name="export_quality_lossless">100% (完全无损)</string>
+    <string name="export_quality_value">%1$d%%</string>
+    <string name="export_preset_high">极高 95%</string>
+    <string name="export_preset_balanced">均衡 85%</string>
+    <string name="export_preset_compact">极简 70%</string>
+    <string name="export_size_estimate_label">单图预估体积</string>
+    <string name="export_lossy_warning">⚠️ 有损压缩会微调像素微结构，若后续需逆向解密复原，请使用 PNG 或 100% 无损 WebP！</string>
+    <string name="export_lossless_badge">🛡️ 像素级保真 · 算法解密首选</string>
 
     <!-- 密码强度评估 -->
     <string name="password_strength_label">强度: </string>
