@@ -48,7 +48,12 @@ class MyImage(
 
     var filename: String
     var thumbnail: Bitmap
+    var originalThumbnail: Bitmap
+        private set
     private var cachedMetrics: ImageMetrics? = null
+
+    val isModified: Boolean
+        get() = _bitmap != null
 
     var originalWidth: Int = 0
         private set
@@ -82,7 +87,9 @@ class MyImage(
     init {
         filename = loadFilename()
         inspectDimensions()
-        thumbnail = loadThumbnailFromUri()
+        val initialThumb = loadThumbnailFromUri()
+        originalThumbnail = initialThumb
+        thumbnail = initialThumb
     }
 
     private fun inspectDimensions() {
@@ -276,8 +283,16 @@ class MyImage(
         _bitmap = null // Release in-memory modified bitmap
         inspectDimensions()
         cachedMetrics = null
-        thumbnail = loadThumbnailFromUri()
+        val freshThumb = loadThumbnailFromUri()
+        originalThumbnail = freshThumb
+        thumbnail = freshThumb
     }
+
+    /**
+     * Decodes and returns the original full-resolution bitmap from the source URI,
+     * independent of any in-memory transformations.
+     */
+    fun getOriginalBitmap(): Bitmap = loadFullBitmap()
 
     /**
      * Clears all sensitive EXIF privacy metadata in memory.

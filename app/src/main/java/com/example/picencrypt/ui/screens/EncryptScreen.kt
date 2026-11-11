@@ -473,14 +473,48 @@ fun EncryptScreen(
                                 }
                             }
 
-                            Image(
-                                bitmap = item.thumbnail.asImageBitmap(),
-                                contentDescription = stringResource(id = R.string.view_full_image_hint),
+                            var isCardPressingOriginal by remember(item.id, item.thumbnail) { mutableStateOf(false) }
+                            val displayThumb = if (isCardPressingOriginal) item.originalThumbnail else item.thumbnail
+
+                            Box(
                                 modifier = Modifier
                                     .padding(start = 15.dp, end = 15.dp, bottom = 4.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .clickable { viewingImage = item }
-                            )
+                                    .pointerInput(item.id, item.isModified) {
+                                        detectTapGestures(
+                                            onTap = { viewingImage = item },
+                                            onPress = {
+                                                if (item.isModified) {
+                                                    haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                                                    isCardPressingOriginal = true
+                                                    tryAwaitRelease()
+                                                    isCardPressingOriginal = false
+                                                }
+                                            }
+                                        )
+                                    }
+                            ) {
+                                Image(
+                                    bitmap = displayThumb.asImageBitmap(),
+                                    contentDescription = stringResource(id = R.string.view_full_image_hint)
+                                )
+
+                                if (item.isModified) {
+                                    Surface(
+                                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                                        color = if (isCardPressingOriginal) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.6f),
+                                        modifier = Modifier.align(Alignment.TopEnd)
+                                    ) {
+                                        Text(
+                                            text = if (isCardPressingOriginal) stringResource(id = R.string.compare_viewing_original) else stringResource(id = R.string.compare_hold_hint),
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (isCardPressingOriginal) MaterialTheme.colorScheme.onPrimary else Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
 
                             Text(
                                 text = stringResource(id = R.string.view_full_image_hint),
@@ -787,6 +821,7 @@ fun EncryptScreen(
         if (currentViewing != null) {
             ImageViewerDialog(
                 bitmap = currentViewing.bitmap,
+                originalBitmap = if (currentViewing.isModified) currentViewing.getOriginalBitmap() else null,
                 title = currentViewing.filename,
                 subtitle = "${currentViewing.originalWidth} × ${currentViewing.originalHeight}",
                 onDismiss = { viewingImage = null }
