@@ -305,13 +305,16 @@ class MyImage(
         index: Int = 0,
         format: ImageExportFormat = ImageExportFormat.PNG,
         quality: Int = format.defaultQuality,
-        stripExif: Boolean = true
+        stripExif: Boolean = true,
+        customFilename: String? = null
     ): SaveResult {
-        val dateTime = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        var ms = System.currentTimeMillis()
-        ms -= ms / 1000 * 1000 + index
-        val s = String.format(Locale.US, "%03d", ms)
-        val imageName = "PicEncrypt_${dateTime + s}.${format.extension}"
+        val imageName = customFilename?.ifBlank { null } ?: run {
+            val dateTime = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            var ms = System.currentTimeMillis()
+            ms -= ms / 1000 * 1000 + index
+            val s = String.format(Locale.US, "%03d", ms)
+            "PicEncrypt_${dateTime + s}.${format.extension}"
+        }
         val appName = appContext.getString(R.string.app_name)
         val saveDir = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),

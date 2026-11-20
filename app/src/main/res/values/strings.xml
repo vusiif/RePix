@@ -167,6 +167,14 @@
     <string name="export_size_estimate_label">单图预估体积</string>
     <string name="export_lossy_warning">⚠️ 有损压缩会微调像素微结构，若后续需逆向解密复原，请使用 PNG 或 100% 无损 WebP！</string>
     <string name="export_lossless_badge">🛡️ 像素级保真 · 算法解密首选</string>
+    <!-- 导出命名模板 -->
+    <string name="export_naming_section_title">导出文件命名规则</string>
+    <string name="export_prefix_label">自定义前缀</string>
+    <string name="export_naming_preview_label">命名预览</string>
+    <string name="export_template_timestamp">时间戳</string>
+    <string name="export_template_keep_original">保留原名</string>
+    <string name="export_template_algo_tagged">算法标记</string>
+    <string name="export_template_sequential">纯序列号</string>
 
     <!-- 密码强度评估 -->
     <string name="password_strength_label">强度: </string>

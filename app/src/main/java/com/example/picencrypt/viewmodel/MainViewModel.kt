@@ -23,6 +23,7 @@ import com.example.picencrypt.utils.SteganographyHelper
 import com.example.picencrypt.utils.ImageScramble.ProcessType
 import com.example.picencrypt.utils.MirageTankBridge
 import com.example.picencrypt.utils.MiragePresetGenerator
+import com.example.picencrypt.utils.ExportFilenameGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -43,6 +44,8 @@ class MainViewModel : ViewModel() {
     var appThemeMode by mutableStateOf(AppThemeMode.FOLLOW_SYSTEM)
     var isStripExifOnExport by mutableStateOf(true)
     var exportQuality by mutableIntStateOf(90)
+    var exportFilenamePattern by mutableStateOf(ExportFilenameGenerator.PATTERN_TIMESTAMP)
+    var exportCustomPrefix by mutableStateOf("RePix")
 
     fun initPreferences(context: Context) {
         val sp = context.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
@@ -53,6 +56,8 @@ class MainViewModel : ViewModel() {
         val formatName = sp.getString("key_export_format", ImageExportFormat.PNG.name) ?: ImageExportFormat.PNG.name
         exportFormat = ImageExportFormat.entries.find { it.name == formatName } ?: ImageExportFormat.PNG
         exportQuality = sp.getInt("key_export_quality", 90)
+        exportFilenamePattern = sp.getString("key_export_filename_pattern", ExportFilenameGenerator.PATTERN_TIMESTAMP) ?: ExportFilenameGenerator.PATTERN_TIMESTAMP
+        exportCustomPrefix = sp.getString("key_export_custom_prefix", "RePix") ?: "RePix"
     }
 
     fun setHapticFeedbackEnabled(enabled: Boolean, context: Context? = null) {
@@ -93,6 +98,22 @@ class MainViewModel : ViewModel() {
         context?.let {
             val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
             sp.edit().putInt("key_export_quality", clamped).apply()
+        }
+    }
+
+    fun setExportFilenamePattern(pattern: String, context: Context? = null) {
+        exportFilenamePattern = pattern
+        context?.let {
+            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
+            sp.edit().putString("key_export_filename_pattern", pattern).apply()
+        }
+    }
+
+    fun setExportCustomPrefix(prefix: String, context: Context? = null) {
+        exportCustomPrefix = prefix
+        context?.let {
+            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
+            sp.edit().putString("key_export_custom_prefix", prefix).apply()
         }
     }
 
@@ -331,11 +352,20 @@ class MainViewModel : ViewModel() {
             var failCount = 0
             for (i in snapshot.indices) {
                 if (!isActive) break
+                val resolvedName = ExportFilenameGenerator.generateFilename(
+                    template = exportFilenamePattern,
+                    prefix = exportCustomPrefix,
+                    originalFilename = snapshot[i].filename,
+                    index = i,
+                    algorithmName = selectedAlgorithm.name,
+                    extension = exportFormat.extension
+                )
                 val ok = snapshot[i].saveWithDetail(
                     i,
                     format = exportFormat,
                     quality = exportQuality,
-                    stripExif = stripSnapshot
+                    stripExif = stripSnapshot,
+                    customFilename = resolvedName
                 ) is com.example.picencrypt.model.SaveResult.Success
                 if (ok) successCount++ else failCount++
                 progress = (i + 1).toFloat() / snapshot.size
@@ -405,12 +435,21 @@ class MainViewModel : ViewModel() {
     fun saveSingleImage(index: Int, onComplete: (Boolean) -> Unit) {
         if (index !in images.indices) return
         val item = images[index]
+        val resolvedName = ExportFilenameGenerator.generateFilename(
+            template = exportFilenamePattern,
+            prefix = exportCustomPrefix,
+            originalFilename = item.filename,
+            index = index,
+            algorithmName = selectedAlgorithm.name,
+            extension = exportFormat.extension
+        )
         viewModelScope.launch(Dispatchers.IO) {
             val result = item.saveWithDetail(
                 index,
                 format = exportFormat,
                 quality = exportQuality,
-                stripExif = isStripExifOnExport
+                stripExif = isStripExifOnExport,
+                customFilename = resolvedName
             ) is com.example.picencrypt.model.SaveResult.Success
             withContext(Dispatchers.Main) {
                 onComplete(result)

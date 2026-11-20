@@ -40,6 +40,7 @@ import com.example.picencrypt.R
 import com.example.picencrypt.model.Algorithm
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.example.picencrypt.utils.ExportSizeEstimator
+import com.example.picencrypt.utils.ExportFilenameGenerator
 import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.example.picencrypt.model.AppThemeMode
@@ -461,6 +462,119 @@ fun MethodAndKeySettings(
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
+
+    // Export Filename Template Section
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .padding(horizontal = 10.dp, vertical = 2.dp)
+            .width(280.dp)
+    ) {
+        Text(
+            text = stringResource(id = R.string.export_naming_section_title),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+
+    // Preset Naming Chips
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .padding(horizontal = 10.dp, vertical = 3.dp)
+            .width(280.dp)
+    ) {
+        val presets = listOf(
+            Pair(ExportFilenameGenerator.PATTERN_TIMESTAMP, stringResource(id = R.string.export_template_timestamp)),
+            Pair(ExportFilenameGenerator.PATTERN_ORIGINAL_PREFIX, stringResource(id = R.string.export_template_keep_original)),
+            Pair(ExportFilenameGenerator.PATTERN_ALGORITHM_TAGGED, stringResource(id = R.string.export_template_algo_tagged)),
+            Pair(ExportFilenameGenerator.PATTERN_SEQUENTIAL, stringResource(id = R.string.export_template_sequential))
+        )
+        for ((pattern, label) in presets) {
+            val isSelected = viewModel.exportFilenamePattern == pattern
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
+                        viewModel.setExportFilenamePattern(pattern, context)
+                    }
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 10.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.padding(vertical = 5.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+    }
+
+    // Custom Prefix TextField
+    TextField(
+        value = viewModel.exportCustomPrefix,
+        onValueChange = { viewModel.setExportCustomPrefix(it, context) },
+        label = { Text(stringResource(id = R.string.export_prefix_label), fontSize = 11.sp) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+            unfocusedIndicatorColor = Color.Transparent
+        ),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier
+            .padding(horizontal = 10.dp, vertical = 3.dp)
+            .width(280.dp)
+    )
+
+    // Real-time Preview Badge
+    val previewSampleName = viewModel.images.firstOrNull()?.filename ?: "sample_photo.jpg"
+    val previewFilename = ExportFilenameGenerator.generateFilename(
+        template = viewModel.exportFilenamePattern,
+        prefix = viewModel.exportCustomPrefix,
+        originalFilename = previewSampleName,
+        index = 0,
+        algorithmName = viewModel.selectedAlgorithm.name,
+        extension = viewModel.exportFormat.extension
+    )
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier
+            .padding(horizontal = 10.dp, vertical = 3.dp)
+            .width(280.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = "📁 " + stringResource(id = R.string.export_naming_preview_label) + ": ",
+                fontSize = 10.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = previewFilename,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
     }
