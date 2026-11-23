@@ -29,7 +29,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileInputStream
 import java.io.FileNotFoundException
+import java.io.FileOutputStream
 
 class MainViewModel : ViewModel() {
 
@@ -641,59 +644,76 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun saveMiragePreview(context: Context, onResult: (Boolean) -> Unit) {
-        val preview = miragePreviewBitmap
-        if (preview != null) {
-            isMirageProcessing = true
-            viewModelScope.launch(Dispatchers.IO) {
-                val saved = MirageTankBridge.saveMiragePng(context, preview)
-                withContext(Dispatchers.Main) {
-                    isMirageProcessing = false
-                    onResult(saved)
-                }
-            }
-        } else {
-            val cUri = mirageCoverUri ?: return
-            val hUri = mirageHiddenUri ?: return
-            isMirageProcessing = true
-            viewModelScope.launch(Dispatchers.IO) {
-                try {
-                    val coverBmp = context.contentResolver.openInputStream(cUri)?.use { BitmapFactory.decodeStream(it) }
-                    val hiddenBmp = context.contentResolver.openInputStream(hUri)?.use { BitmapFactory.decodeStream(it) }
-                    if (coverBmp != null && hiddenBmp != null) {
-                        val (saved, outBmp) = MirageTankBridge.createAndSaveMirageTank(
-                            context,
-                            coverBmp,
-                            hiddenBmp,
-                            isColored = mirageIsColoredMode,
-                            mode = mirageScaleMode,
-                            coverBrightness = mirageCoverBrightness,
-                            coverContrast = mirageCoverContrast,
-                            hiddenBrightness = mirageHiddenBrightness,
-                            hiddenContrast = mirageHiddenContrast
-                        )
-                        withContext(Dispatchers.Main) {
-                            if (saved && outBmp != null) {
-                                miragePreviewBitmap = outBmp
-                            }
-                            isMirageProcessing = false
-                            onResult(saved)
-                        }
-                    } else {
-                        withContext(Dispatchers.Main) {
-                            isMirageProcessing = false
-                            onResult(false)
-                        }
+    /**
+     * 正式导出幻影坦克：始终基于原始全分辨率表图与里图进行高精度合成，
+     * 避免复用受限于 1200px 的预览位图。
+     * @param maxDimension 最大长边限制，0 表示不限制（原始全分辨率）
+     */
+    fun exportMirageFullResolution(
+        context: Context,
+        maxDimension: Int = 0,
+        onResult: (Boolean) -> Unit
+    ) {
+        val cUri = mirageCoverUri ?: run {
+            onResult(false)
+            return
+        }
+        val hUri = mirageHiddenUri ?: run {
+            onResult(false)
+            return
+        }
+
+        isMirageProcessing = true
+        viewModelScope.launch(Dispatchers.IO) {
+            var coverBmp: Bitmap? = null
+            var hiddenBmp: Bitmap? = null
+            var outBmp: Bitmap? = null
+            try {
+                coverBmp = context.contentResolver.openInputStream(cUri)?.use { BitmapFactory.decodeStream(it) }
+                hiddenBmp = context.contentResolver.openInputStream(hUri)?.use { BitmapFactory.decodeStream(it) }
+                if (coverBmp != null && hiddenBmp != null) {
+                    val (saved, generatedBmp) = MirageTankBridge.createAndSaveMirageTank(
+                        context,
+                        coverBmp,
+                        hiddenBmp,
+                        isColored = mirageIsColoredMode,
+                        maxDimension = maxDimension,
+                        mode = mirageScaleMode,
+                        coverBrightness = mirageCoverBrightness,
+                        coverContrast = mirageCoverContrast,
+                        hiddenBrightness = mirageHiddenBrightness,
+                        hiddenContrast = mirageHiddenContrast
+                    )
+                    outBmp = generatedBmp
+                    withContext(Dispatchers.Main) {
+                        isMirageProcessing = false
+                        onResult(saved)
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                } else {
                     withContext(Dispatchers.Main) {
                         isMirageProcessing = false
                         onResult(false)
                     }
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    isMirageProcessing = false
+                    onResult(false)
+                }
+            } finally {
+                coverBmp?.takeUnless { it.isRecycled }?.recycle()
+                hiddenBmp?.takeUnless { it.isRecycled }?.recycle()
+                outBmp?.takeUnless { it.isRecycled }?.recycle()
             }
         }
+    }
+
+    /**
+     * 兼容方法：默认以原始全分辨率保存幻影坦克
+     */
+    fun saveMiragePreview(context: Context, onResult: (Boolean) -> Unit) {
+        exportMirageFullResolution(context, maxDimension = 0, onResult = onResult)
     }
 
     // ---------------- 业务方法：安全保险箱 (AES-256-GCM) ----------------
@@ -741,20 +761,23 @@ class MainViewModel : ViewModel() {
         isSafeProcessing = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val inputBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                if (inputBytes == null || inputBytes.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        isSafeProcessing = false
-                        onResult(false, context.getString(com.example.picencrypt.R.string.file_not_found))
-                    }
-                    return@launch
-                }
-
                 val origName = safeSourceFileName.ifEmpty { "file" }
                 val outName = "${origName}.rpx"
-                val encryptedBytes = CryptoUtils.encryptBytes(inputBytes, pwd.toCharArray(), origName)
+                val plainLength = safeSourceFileSize.coerceAtLeast(0L)
 
-                val saved = FileUtils.saveBytesToDownload(context, outName, encryptedBytes)
+                val saved = FileUtils.writeStreamToDownload(context, outName) { outStream ->
+                    context.contentResolver.openInputStream(uri)?.use { inStream ->
+                        CryptoUtils.encryptStream(
+                            input = inStream,
+                            output = outStream,
+                            password = pwd.toCharArray(),
+                            originalFilename = origName,
+                            plainLength = plainLength
+                        )
+                        true
+                    } ?: false
+                }
+
                 withContext(Dispatchers.Main) {
                     isSafeProcessing = false
                     if (saved) {
@@ -786,21 +809,20 @@ class MainViewModel : ViewModel() {
 
         isSafeProcessing = true
         viewModelScope.launch(Dispatchers.IO) {
+            val tempFile = File(context.cacheDir, "temp_safe_decrypt_${System.currentTimeMillis()}.tmp")
             try {
-                val encryptedBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                if (encryptedBytes == null || encryptedBytes.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        isSafeProcessing = false
-                        onResult(false, context.getString(com.example.picencrypt.R.string.file_not_found))
+                val decryptResult = context.contentResolver.openInputStream(uri)?.use { inStream ->
+                    FileOutputStream(tempFile).use { tempOut ->
+                        CryptoUtils.decryptStream(inStream, tempOut, pwd.toCharArray())
                     }
-                    return@launch
-                }
+                } ?: CryptoUtils.DecryptResult.InvalidFormat(context.getString(com.example.picencrypt.R.string.file_not_found))
 
-                val decryptResult = CryptoUtils.decryptBytes(encryptedBytes, pwd.toCharArray())
                 when (decryptResult) {
                     is CryptoUtils.DecryptResult.Success -> {
                         val outName = decryptResult.originalFilename.ifEmpty { "decrypted_file" }
-                        val saved = FileUtils.saveBytesToDownload(context, outName, decryptResult.plainBytes)
+                        val saved = FileInputStream(tempFile).use { tempIn ->
+                            FileUtils.saveStreamToDownload(context, outName, tempIn)
+                        }
                         withContext(Dispatchers.Main) {
                             isSafeProcessing = false
                             if (saved) {
@@ -828,6 +850,10 @@ class MainViewModel : ViewModel() {
                 withContext(Dispatchers.Main) {
                     isSafeProcessing = false
                     onResult(false, e.localizedMessage ?: context.getString(com.example.picencrypt.R.string.stego_failed))
+                }
+            } finally {
+                if (tempFile.exists()) {
+                    try { tempFile.delete() } catch (_: Exception) {}
                 }
             }
         }

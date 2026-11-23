@@ -13,6 +13,8 @@ import com.example.picencrypt.R
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -166,7 +168,40 @@ object FileUtils {
      * 保存字节数据至系统公共 Download/RePix 目录
      */
     fun saveBytesToDownload(context: Context, fileName: String, bytes: ByteArray): Boolean {
+        return writeStreamToDownload(context, fileName) { out ->
+            out.write(bytes)
+            out.flush()
+            true
+        }
+    }
+
+    /**
+     * 流式保存输入流数据至系统公共 Download/RePix 目录（无内存峰值）
+     */
+    fun saveStreamToDownload(context: Context, fileName: String, inputStream: InputStream): Boolean {
+        return writeStreamToDownload(context, fileName) { out ->
+            val buffer = ByteArray(64 * 1024)
+            var read: Int
+            while (inputStream.read(buffer).also { read = it } != -1) {
+                out.write(buffer, 0, read)
+            }
+            out.flush()
+            true
+        }
+    }
+
+    /**
+     * 以流方式直接向系统公共 Download/RePix 目录写出数据，
+     * 写入失败或抛出异常时自动回滚清理不完整产物。
+     */
+    fun writeStreamToDownload(
+        context: Context,
+        fileName: String,
+        writeBlock: (OutputStream) -> Boolean
+    ): Boolean {
         val appName = context.getString(R.string.app_name)
+        var outputUri: Uri? = null
+        var outputFile: File? = null
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
@@ -175,22 +210,37 @@ object FileUtils {
                     put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/$appName")
                 }
                 val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    out.write(bytes)
-                    out.flush()
-                } ?: return false
+                outputUri = uri
+                val success = context.contentResolver.openOutputStream(uri)?.use { out ->
+                    writeBlock(out)
+                } ?: false
+                if (!success) {
+                    try { context.contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                }
+                success
             } else {
                 val saveDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), appName)
                 if (!saveDir.exists()) saveDir.mkdirs()
                 val outFile = File(saveDir, fileName)
-                FileOutputStream(outFile).use { out ->
-                    out.write(bytes)
-                    out.flush()
+                outputFile = outFile
+                val success = FileOutputStream(outFile).use { out ->
+                    writeBlock(out)
                 }
+                if (!success && outFile.exists()) {
+                    try { outFile.delete() } catch (_: Exception) {}
+                }
+                if (success) {
+                    notifyMediaScanner(context, outFile, "application/octet-stream")
+                }
+                success
             }
-            true
         } catch (e: Exception) {
             e.printStackTrace()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && outputUri != null) {
+                try { context.contentResolver.delete(outputUri, null, null) } catch (_: Exception) {}
+            } else if (outputFile != null && outputFile.exists()) {
+                try { outputFile.delete() } catch (_: Exception) {}
+            }
             false
         }
     }

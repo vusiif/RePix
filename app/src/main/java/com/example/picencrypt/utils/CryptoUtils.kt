@@ -1,5 +1,6 @@
 package com.example.picencrypt.utils
 
+import androidx.annotation.VisibleForTesting
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -8,9 +9,8 @@ import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 import javax.crypto.AEADBadTagException
+import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
-import javax.crypto.CipherInputStream
-import javax.crypto.CipherOutputStream
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
@@ -18,20 +18,29 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * Standard Cryptographic Security Engine for RePix (AES-256-GCM + PBKDF2).
- * Provides authenticated, tamper-proof container (.rpx) encryption and decryption.
+ * Provides authenticated, tamper-proof container (.rpx) streaming encryption and decryption.
+ *
+ * Supports RPX V2 (with full header AAD authentication & 60,000 PBKDF2 iterations)
+ * and preserves backward-compatible read-only decryption for legacy RPX V1 files.
  */
 object CryptoUtils {
 
     // Magic Header: "RPX1"
     val MAGIC_HEADER = byteArrayOf(0x52.toByte(), 0x50.toByte(), 0x58.toByte(), 0x31.toByte())
-    const val CURRENT_VERSION: Byte = 1
+
+    const val VERSION_1: Byte = 1
+    const val VERSION_2: Byte = 2
+    const val CURRENT_VERSION: Byte = VERSION_2
+
     const val ALGORITHM_AES_256_GCM: Byte = 1
 
     private const val SALT_LENGTH = 16
     private const val IV_LENGTH = 12
     private const val TAG_LENGTH_BITS = 128
-    private const val PBKDF2_ITERATIONS = 15000
+    const val PBKDF2_ITERATIONS_V1 = 15000
+    const val PBKDF2_ITERATIONS_V2 = 60000
     private const val KEY_LENGTH_BITS = 256
+    const val DEFAULT_CHUNK_SIZE = 64 * 1024
 
     private val secureRandom = SecureRandom()
 
@@ -41,8 +50,39 @@ object CryptoUtils {
         val salt: ByteArray,
         val iv: ByteArray,
         val originalFilename: String,
-        val plainLength: Long
-    )
+        val plainLength: Long,
+        val iterations: Int = PBKDF2_ITERATIONS_V1,
+        val aadBytes: ByteArray? = null
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+            other as RpxHeader
+            if (version != other.version) return false
+            if (algo != other.algo) return false
+            if (!salt.contentEquals(other.salt)) return false
+            if (!iv.contentEquals(other.iv)) return false
+            if (originalFilename != other.originalFilename) return false
+            if (plainLength != other.plainLength) return false
+            if (iterations != other.iterations) return false
+            if (aadBytes != null) {
+                if (other.aadBytes == null || !aadBytes.contentEquals(other.aadBytes)) return false
+            } else if (other.aadBytes != null) return false
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = version.toInt()
+            result = 31 * result + algo.toInt()
+            result = 31 * result + salt.contentHashCode()
+            result = 31 * result + iv.contentHashCode()
+            result = 31 * result + originalFilename.hashCode()
+            result = 31 * result + plainLength.hashCode()
+            result = 31 * result + iterations
+            result = 31 * result + (aadBytes?.contentHashCode() ?: 0)
+            return result
+        }
+    }
 
     sealed class DecryptResult {
         data class Success(val originalFilename: String, val plainBytes: ByteArray) : DecryptResult()
@@ -53,24 +93,46 @@ object CryptoUtils {
     /**
      * Derive a 256-bit AES key from password and salt using PBKDF2-HMAC-SHA256
      */
-    fun deriveKey(password: CharArray, salt: ByteArray): SecretKeySpec {
-        val spec = PBEKeySpec(password, salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)
+    fun deriveKey(
+        password: CharArray,
+        salt: ByteArray,
+        iterations: Int = PBKDF2_ITERATIONS_V2
+    ): SecretKeySpec {
+        val spec = PBEKeySpec(password, salt, iterations, KEY_LENGTH_BITS)
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
         val keyBytes = factory.generateSecret(spec).encoded
         return SecretKeySpec(keyBytes, "AES")
     }
 
     /**
-     * Inspect and parse header of an .rpx stream without decrypting payload
+     * Inspect and parse header of an .rpx stream without decrypting payload.
+     * Stream position advances to the start of ciphertext upon return.
      */
     fun inspectHeader(inputStream: InputStream): RpxHeader? {
         val magic = ByteArray(MAGIC_HEADER.size)
         if (readFully(inputStream, magic) != magic.size) return null
         if (!magic.contentEquals(MAGIC_HEADER)) return null
 
-        val version = inputStream.read().toByte()
-        val algo = inputStream.read().toByte()
-        if (version != CURRENT_VERSION || algo != ALGORITHM_AES_256_GCM) return null
+        val version = inputStream.read()
+        if (version == -1) return null
+        val versionByte = version.toByte()
+
+        val algo = inputStream.read()
+        if (algo == -1) return null
+        val algoByte = algo.toByte()
+        if (algoByte != ALGORITHM_AES_256_GCM) return null
+
+        val iterations = when (versionByte) {
+            VERSION_1 -> PBKDF2_ITERATIONS_V1
+            VERSION_2 -> {
+                val iterBytes = ByteArray(4)
+                if (readFully(inputStream, iterBytes) != 4) return null
+                val iters = ByteBuffer.wrap(iterBytes).int
+                if (iters < 1000 || iters > 1_000_000) return null
+                iters
+            }
+            else -> return null
+        }
 
         val salt = ByteArray(SALT_LENGTH)
         if (readFully(inputStream, salt) != SALT_LENGTH) return null
@@ -81,6 +143,7 @@ object CryptoUtils {
         val nameLenBytes = ByteArray(2)
         if (readFully(inputStream, nameLenBytes) != 2) return null
         val nameLen = ByteBuffer.wrap(nameLenBytes).short.toInt() and 0xFFFF
+        if (nameLen > 4096) return null
 
         val nameBytes = ByteArray(nameLen)
         if (readFully(inputStream, nameBytes) != nameLen) return null
@@ -90,18 +153,45 @@ object CryptoUtils {
         if (readFully(inputStream, lenBytes) != 8) return null
         val plainLength = ByteBuffer.wrap(lenBytes).long
 
-        return RpxHeader(version, algo, salt, iv, filename, plainLength)
+        val aadBytes = if (versionByte == VERSION_2) {
+            val totalHeaderSize = MAGIC_HEADER.size + 1 + 1 + 4 + SALT_LENGTH + IV_LENGTH + 2 + nameBytes.size + 8
+            ByteBuffer.allocate(totalHeaderSize).apply {
+                put(MAGIC_HEADER)
+                put(versionByte)
+                put(algoByte)
+                putInt(iterations)
+                put(salt)
+                put(iv)
+                putShort(nameBytes.size.toShort())
+                put(nameBytes)
+                putLong(plainLength)
+            }.array()
+        } else {
+            null
+        }
+
+        return RpxHeader(
+            version = versionByte,
+            algo = algoByte,
+            salt = salt,
+            iv = iv,
+            originalFilename = filename,
+            plainLength = plainLength,
+            iterations = iterations,
+            aadBytes = aadBytes
+        )
     }
 
     /**
-     * Encrypt an arbitrary stream into .rpx format with AES-256-GCM
+     * Encrypt an arbitrary stream into .rpx format with AES-256-GCM (V2 Format with Header AAD)
      */
     fun encryptStream(
         input: InputStream,
         output: OutputStream,
         password: CharArray,
         originalFilename: String,
-        plainLength: Long
+        plainLength: Long,
+        bufferSize: Int = DEFAULT_CHUNK_SIZE
     ) {
         val salt = ByteArray(SALT_LENGTH)
         secureRandom.nextBytes(salt)
@@ -109,65 +199,90 @@ object CryptoUtils {
         val iv = ByteArray(IV_LENGTH)
         secureRandom.nextBytes(iv)
 
-        // 1. Write Header
-        output.write(MAGIC_HEADER)
-        output.write(CURRENT_VERSION.toInt())
-        output.write(ALGORITHM_AES_256_GCM.toInt())
-        output.write(salt)
-        output.write(iv)
-
         val nameBytes = originalFilename.toByteArray(StandardCharsets.UTF_8)
-        val nameLenBytes = ByteBuffer.allocate(2).putShort(nameBytes.size.toShort()).array()
-        output.write(nameLenBytes)
-        output.write(nameBytes)
+        val iterations = PBKDF2_ITERATIONS_V2
+        val totalHeaderSize = MAGIC_HEADER.size + 1 + 1 + 4 + SALT_LENGTH + IV_LENGTH + 2 + nameBytes.size + 8
 
-        val lenBytes = ByteBuffer.allocate(8).putLong(plainLength).array()
-        output.write(lenBytes)
+        // 1. Construct V2 Header
+        val headerBytes = ByteBuffer.allocate(totalHeaderSize).apply {
+            put(MAGIC_HEADER)
+            put(CURRENT_VERSION)
+            put(ALGORITHM_AES_256_GCM)
+            putInt(iterations)
+            put(salt)
+            put(iv)
+            putShort(nameBytes.size.toShort())
+            put(nameBytes)
+            putLong(plainLength)
+        }.array()
 
-        // 2. Initialize AES-GCM Cipher
-        val keySpec = deriveKey(password, salt)
+        // 2. Write header
+        output.write(headerBytes)
+
+        // 3. Initialize AES-GCM Cipher and authenticate header via AAD
+        val keySpec = deriveKey(password, salt, iterations)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         val gcmSpec = GCMParameterSpec(TAG_LENGTH_BITS, iv)
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+        cipher.updateAAD(headerBytes)
 
-        // 3. Encrypt payload
-        CipherOutputStream(output, cipher).use { cipherOut ->
-            val buffer = ByteArray(8192)
-            var read: Int
-            while (input.read(buffer).also { read = it } != -1) {
-                cipherOut.write(buffer, 0, read)
+        // 4. Encrypt payload in bounded chunks
+        val buffer = ByteArray(bufferSize)
+        var read: Int
+        while (input.read(buffer).also { read = it } != -1) {
+            val chunk = cipher.update(buffer, 0, read)
+            if (chunk != null && chunk.isNotEmpty()) {
+                output.write(chunk)
             }
-            cipherOut.flush()
         }
+        val finalBlock = cipher.doFinal()
+        if (finalBlock != null && finalBlock.isNotEmpty()) {
+            output.write(finalBlock)
+        }
+        output.flush()
     }
 
     /**
-     * Decrypt an .rpx stream with AES-256-GCM and verify integrity
+     * Decrypt an .rpx stream with AES-256-GCM and verify integrity (supports V1 and V2)
      */
-    fun decryptStream(input: InputStream, output: OutputStream, password: CharArray): DecryptResult {
+    fun decryptStream(
+        input: InputStream,
+        output: OutputStream,
+        password: CharArray,
+        bufferSize: Int = DEFAULT_CHUNK_SIZE
+    ): DecryptResult {
         val header = inspectHeader(input) ?: return DecryptResult.InvalidFormat("Not a valid RePix .rpx file")
 
-        val keySpec = deriveKey(password, header.salt)
+        val keySpec = deriveKey(password, header.salt, header.iterations)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         val gcmSpec = GCMParameterSpec(TAG_LENGTH_BITS, header.iv)
         cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+        if (header.aadBytes != null) {
+            cipher.updateAAD(header.aadBytes)
+        }
 
-        try {
-            CipherInputStream(input, cipher).use { cipherIn ->
-                val buffer = ByteArray(8192)
-                var read: Int
-                while (cipherIn.read(buffer).also { read = it } != -1) {
-                    output.write(buffer, 0, read)
+        return try {
+            val buffer = ByteArray(bufferSize)
+            var read: Int
+            while (input.read(buffer).also { read = it } != -1) {
+                val chunk = cipher.update(buffer, 0, read)
+                if (chunk != null && chunk.isNotEmpty()) {
+                    output.write(chunk)
                 }
-                output.flush()
             }
-            return DecryptResult.Success(header.originalFilename, ByteArray(0))
+            val finalBlock = cipher.doFinal()
+            if (finalBlock != null && finalBlock.isNotEmpty()) {
+                output.write(finalBlock)
+            }
+            output.flush()
+            DecryptResult.Success(header.originalFilename, ByteArray(0))
         } catch (e: Exception) {
             val root = getRootCause(e)
-            if (root is AEADBadTagException || root.javaClass.simpleName.contains("BadTag")) {
-                return DecryptResult.WrongPasswordOrCorrupted
+            if (root is AEADBadTagException || root is BadPaddingException || root.javaClass.simpleName.contains("BadTag")) {
+                DecryptResult.WrongPasswordOrCorrupted
+            } else {
+                DecryptResult.WrongPasswordOrCorrupted
             }
-            return DecryptResult.WrongPasswordOrCorrupted
         }
     }
 
@@ -186,29 +301,64 @@ object CryptoUtils {
      */
     fun decryptBytes(encryptedBytes: ByteArray, password: CharArray): DecryptResult {
         val inStream = ByteArrayInputStream(encryptedBytes)
-        val header = inspectHeader(inStream) ?: return DecryptResult.InvalidFormat("Not a valid RePix .rpx file")
+        val outStream = ByteArrayOutputStream()
+        val result = decryptStream(inStream, outStream, password)
+        return when (result) {
+            is DecryptResult.Success -> DecryptResult.Success(result.originalFilename, outStream.toByteArray())
+            is DecryptResult.WrongPasswordOrCorrupted -> result
+            is DecryptResult.InvalidFormat -> result
+        }
+    }
 
-        val keySpec = deriveKey(password, header.salt)
+    /**
+     * Helper for tests to create legacy RPX V1 container
+     */
+    @VisibleForTesting
+    fun encryptStreamV1ForTesting(
+        input: InputStream,
+        output: OutputStream,
+        password: CharArray,
+        originalFilename: String,
+        plainLength: Long
+    ) {
+        val salt = ByteArray(SALT_LENGTH)
+        secureRandom.nextBytes(salt)
+
+        val iv = ByteArray(IV_LENGTH)
+        secureRandom.nextBytes(iv)
+
+        output.write(MAGIC_HEADER)
+        output.write(VERSION_1.toInt())
+        output.write(ALGORITHM_AES_256_GCM.toInt())
+        output.write(salt)
+        output.write(iv)
+
+        val nameBytes = originalFilename.toByteArray(StandardCharsets.UTF_8)
+        val nameLenBytes = ByteBuffer.allocate(2).putShort(nameBytes.size.toShort()).array()
+        output.write(nameLenBytes)
+        output.write(nameBytes)
+
+        val lenBytes = ByteBuffer.allocate(8).putLong(plainLength).array()
+        output.write(lenBytes)
+
+        val keySpec = deriveKey(password, salt, PBKDF2_ITERATIONS_V1)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val gcmSpec = GCMParameterSpec(TAG_LENGTH_BITS, header.iv)
-        cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+        val gcmSpec = GCMParameterSpec(TAG_LENGTH_BITS, iv)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
 
-        val remainingEncrypted = encryptedBytes.copyOfRange(
-            MAGIC_HEADER.size + 1 + 1 + SALT_LENGTH + IV_LENGTH + 2 + header.originalFilename.toByteArray(StandardCharsets.UTF_8).size + 8,
-            encryptedBytes.size
-        )
-
-        return try {
-            val plain = cipher.doFinal(remainingEncrypted)
-            DecryptResult.Success(header.originalFilename, plain)
-        } catch (e: Exception) {
-            val root = getRootCause(e)
-            if (root is AEADBadTagException || root.javaClass.simpleName.contains("BadTag")) {
-                DecryptResult.WrongPasswordOrCorrupted
-            } else {
-                DecryptResult.WrongPasswordOrCorrupted
+        val buffer = ByteArray(DEFAULT_CHUNK_SIZE)
+        var read: Int
+        while (input.read(buffer).also { read = it } != -1) {
+            val chunk = cipher.update(buffer, 0, read)
+            if (chunk != null && chunk.isNotEmpty()) {
+                output.write(chunk)
             }
         }
+        val finalBlock = cipher.doFinal()
+        if (finalBlock != null && finalBlock.isNotEmpty()) {
+            output.write(finalBlock)
+        }
+        output.flush()
     }
 
     private fun readFully(input: InputStream, buffer: ByteArray): Int {

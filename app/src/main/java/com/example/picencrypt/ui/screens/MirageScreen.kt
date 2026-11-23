@@ -581,7 +581,7 @@ fun MirageScreen(
                     Button(
                         onClick = {
                             val startTime = System.currentTimeMillis()
-                            viewModel.saveMiragePreview(context) { saved ->
+                            viewModel.exportMirageFullResolution(context) { saved ->
                                 val durationMs = System.currentTimeMillis() - startTime
                                 if (saved) {
                                     haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)

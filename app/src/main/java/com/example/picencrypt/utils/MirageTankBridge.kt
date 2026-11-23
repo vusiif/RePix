@@ -181,13 +181,14 @@ object MirageTankBridge {
 
     /**
      * 高阶合成流程：支持全彩/黑白模式生成，并强制以 PNG 格式保存到系统相册
+     * @param maxDimension 最大长边尺寸，<= 0 表示不限制，导出原始全分辨率
      */
     fun createAndSaveMirageTank(
         context: Context,
         cover: Bitmap,
         hidden: Bitmap,
         isColored: Boolean = true,
-        maxDimension: Int = 1200,
+        maxDimension: Int = 0,
         mode: MirageScaleMode = MirageScaleMode.FIT,
         coverBrightness: Float = 0f,
         coverContrast: Float = 1f,
