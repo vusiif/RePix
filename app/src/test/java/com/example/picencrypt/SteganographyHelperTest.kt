@@ -197,4 +197,29 @@ class SteganographyHelperTest {
         org.junit.Assert.assertFalse(plainInspection.hasArchive)
         assertEquals(0L, plainInspection.archiveSize)
     }
+
+    @Test
+    fun testExtractArchiveStreamPureStream() {
+        val dummyImage = ByteArray(1024) { 0x11 }
+        val dummyArchive = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0xAA.toByte(), 0xBB.toByte(), 0xCC.toByte())
+        val combined = dummyImage + dummyArchive
+
+        val inStream = java.io.ByteArrayInputStream(combined)
+        val outStream = java.io.ByteArrayOutputStream()
+
+        val success = SteganographyHelper.extractArchiveStream(inStream, outStream, dummyImage.size.toLong())
+        assertTrue(success)
+        assertArrayEquals(dummyArchive, outStream.toByteArray())
+    }
+
+    @Test
+    fun testSkipFullyHandlesTruncation() {
+        val data = ByteArray(500) { 0x01 }
+        val inStream = java.io.ByteArrayInputStream(data)
+        assertTrue(SteganographyHelper.skipFully(inStream, 300))
+        assertEquals(200, inStream.available())
+
+        // Skipping more than remaining should return false
+        org.junit.Assert.assertFalse(SteganographyHelper.skipFully(inStream, 500))
+    }
 }

@@ -111,57 +111,31 @@ object FileUtils {
     }
 
     fun extractArchiveFromStego(context: Context, stegoUri: Uri): String? {
-        val appName = context.getString(R.string.app_name)
-        val cacheFile = File(context.cacheDir, "temp_stego_${System.currentTimeMillis()}.bin")
-        return try {
-            context.contentResolver.openInputStream(stegoUri)?.use { input ->
-                FileOutputStream(cacheFile).use { output ->
-                    input.copyTo(output)
-                }
-            } ?: return null
-
-            val detection = SteganographyHelper.detectArchiveOffset(cacheFile) ?: return null
-            val ext = detection.type.extension
-            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val outFileName = "Extracted_${timeStamp}.$ext"
-
-            val extractedTempFile = File(context.cacheDir, "temp_extracted_${System.currentTimeMillis()}.$ext")
-            val success = SteganographyHelper.extractArchive(cacheFile, extractedTempFile)
-            if (!success || !extractedTempFile.exists() || extractedTempFile.length() == 0L) {
-                extractedTempFile.delete()
-                return null
+        val totalSize = getUriFileSize(context, stegoUri)
+        val inspection = try {
+            context.contentResolver.openInputStream(stegoUri)?.use { stream ->
+                SteganographyHelper.detectArchiveFromStream(stream, totalSize)
             }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, outFileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/$appName")
-                }
-                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    FileInputStream(extractedTempFile).use { input ->
-                        input.copyTo(out)
-                    }
-                } ?: return null
-            } else {
-                val saveDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), appName)
-                if (!saveDir.exists()) saveDir.mkdirs()
-                val outFile = File(saveDir, outFileName)
-                FileInputStream(extractedTempFile).use { input ->
-                    FileOutputStream(outFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            }
-            extractedTempFile.delete()
-            outFileName
         } catch (e: Exception) {
             e.printStackTrace()
             null
-        } finally {
-            if (cacheFile.exists()) cacheFile.delete()
+        } ?: return null
+
+        if (!inspection.hasArchive || inspection.offset <= 0L) {
+            return null
         }
+
+        val ext = inspection.type.extension
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val outFileName = "Extracted_${timeStamp}.$ext"
+
+        val success = writeStreamToDownload(context, outFileName) { outStream ->
+            context.contentResolver.openInputStream(stegoUri)?.use { inStream ->
+                SteganographyHelper.extractArchiveStream(inStream, outStream, inspection.offset)
+            } ?: false
+        }
+
+        return if (success) outFileName else null
     }
 
     /**

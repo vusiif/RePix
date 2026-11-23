@@ -235,6 +235,21 @@ class MainViewModel : ViewModel() {
 
     private var batchProcessJob: Job? = null
     private var batchSaveJob: Job? = null
+    private var stegoCoverJob: Job? = null
+    private var stegoArchiveJob: Job? = null
+    private var stegoExtractJob: Job? = null
+    private var mirageCoverJob: Job? = null
+    private var mirageHiddenJob: Job? = null
+    private var safeSourceJob: Job? = null
+
+    data class BatchSaveConfig(
+        val format: ImageExportFormat,
+        val quality: Int,
+        val stripExif: Boolean,
+        val filenamePattern: String,
+        val customPrefix: String,
+        val algorithmName: String
+    )
 
     fun cancelCurrentBatchTask() {
         batchProcessJob?.cancel()
@@ -346,7 +361,14 @@ class MainViewModel : ViewModel() {
     fun saveAllImages(onComplete: (successCount: Int, failCount: Int, durationMs: Long) -> Unit) {
         if (images.isEmpty() || isShowProgress) return
         val startTime = System.currentTimeMillis()
-        val stripSnapshot = isStripExifOnExport
+        val saveConfig = BatchSaveConfig(
+            format = exportFormat,
+            quality = exportQuality,
+            stripExif = isStripExifOnExport,
+            filenamePattern = exportFilenamePattern,
+            customPrefix = exportCustomPrefix,
+            algorithmName = selectedAlgorithm.name
+        )
         batchSaveJob = viewModelScope.launch(Dispatchers.IO) {
             isShowProgress = true
             progress = 0f
@@ -356,18 +378,18 @@ class MainViewModel : ViewModel() {
             for (i in snapshot.indices) {
                 if (!isActive) break
                 val resolvedName = ExportFilenameGenerator.generateFilename(
-                    template = exportFilenamePattern,
-                    prefix = exportCustomPrefix,
+                    template = saveConfig.filenamePattern,
+                    prefix = saveConfig.customPrefix,
                     originalFilename = snapshot[i].filename,
                     index = i,
-                    algorithmName = selectedAlgorithm.name,
-                    extension = exportFormat.extension
+                    algorithmName = saveConfig.algorithmName,
+                    extension = saveConfig.format.extension
                 )
                 val ok = snapshot[i].saveWithDetail(
                     i,
-                    format = exportFormat,
-                    quality = exportQuality,
-                    stripExif = stripSnapshot,
+                    format = saveConfig.format,
+                    quality = saveConfig.quality,
+                    stripExif = saveConfig.stripExif,
                     customFilename = resolvedName
                 ) is com.example.picencrypt.model.SaveResult.Success
                 if (ok) successCount++ else failCount++
@@ -463,12 +485,13 @@ class MainViewModel : ViewModel() {
     // ---------------- 业务方法：图种隐写 ----------------
 
     fun setStegoCover(uri: Uri?, context: Context) {
+        stegoCoverJob?.cancel()
         stegoCoverUri = uri
         if (uri == null) {
             stegoCoverThumbnail = null
             stegoCoverFileSize = 0L
         } else {
-            viewModelScope.launch(Dispatchers.IO) {
+            stegoCoverJob = viewModelScope.launch(Dispatchers.IO) {
                 val thumb = FileUtils.loadThumbnail(context, uri, 240)
                 val size = FileUtils.getUriFileSize(context, uri)
                 withContext(Dispatchers.Main) {
@@ -480,11 +503,12 @@ class MainViewModel : ViewModel() {
     }
 
     fun setStegoArchive(uri: Uri?, context: Context) {
+        stegoArchiveJob?.cancel()
         stegoArchiveUri = uri
         if (uri == null) {
             stegoArchiveFileSize = 0L
         } else {
-            viewModelScope.launch(Dispatchers.IO) {
+            stegoArchiveJob = viewModelScope.launch(Dispatchers.IO) {
                 val size = FileUtils.getUriFileSize(context, uri)
                 withContext(Dispatchers.Main) {
                     stegoArchiveFileSize = size
@@ -494,6 +518,7 @@ class MainViewModel : ViewModel() {
     }
 
     fun setStegoExtractTarget(uri: Uri?, context: Context) {
+        stegoExtractJob?.cancel()
         stegoExtractTargetUri = uri
         stegoInspection = null
         if (uri == null) {
@@ -502,7 +527,7 @@ class MainViewModel : ViewModel() {
             isStegoInspecting = false
         } else {
             isStegoInspecting = true
-            viewModelScope.launch(Dispatchers.IO) {
+            stegoExtractJob = viewModelScope.launch(Dispatchers.IO) {
                 val thumb = FileUtils.loadThumbnail(context, uri, 240)
                 val totalSize = FileUtils.getUriFileSize(context, uri)
                 val inspection = try {
@@ -551,12 +576,13 @@ class MainViewModel : ViewModel() {
     // ---------------- 业务方法：幻影坦克 ----------------
 
     fun setMirageCover(uri: Uri?, context: Context) {
+        mirageCoverJob?.cancel()
         mirageCoverUri = uri
         miragePreviewBitmap = null
         if (uri == null) {
             mirageCoverThumbnail = null
         } else {
-            viewModelScope.launch(Dispatchers.IO) {
+            mirageCoverJob = viewModelScope.launch(Dispatchers.IO) {
                 val thumb = FileUtils.loadThumbnail(context, uri, 240)
                 withContext(Dispatchers.Main) {
                     mirageCoverThumbnail = thumb
@@ -566,12 +592,13 @@ class MainViewModel : ViewModel() {
     }
 
     fun setMirageHidden(uri: Uri?, context: Context) {
+        mirageHiddenJob?.cancel()
         mirageHiddenUri = uri
         miragePreviewBitmap = null
         if (uri == null) {
             mirageHiddenThumbnail = null
         } else {
-            viewModelScope.launch(Dispatchers.IO) {
+            mirageHiddenJob = viewModelScope.launch(Dispatchers.IO) {
                 val thumb = FileUtils.loadThumbnail(context, uri, 240)
                 withContext(Dispatchers.Main) {
                     mirageHiddenThumbnail = thumb
@@ -719,6 +746,7 @@ class MainViewModel : ViewModel() {
     // ---------------- 业务方法：安全保险箱 (AES-256-GCM) ----------------
 
     fun setSafeSourceFile(uri: Uri?, context: Context) {
+        safeSourceJob?.cancel()
         safeSourceUri = uri
         if (uri == null) {
             safeSourceFileName = ""
@@ -732,7 +760,7 @@ class MainViewModel : ViewModel() {
         safeSourceFileSize = size
 
         if (safeMode == 1 || name.endsWith(".rpx", ignoreCase = true)) {
-            viewModelScope.launch(Dispatchers.IO) {
+            safeSourceJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         val header = CryptoUtils.inspectHeader(input)

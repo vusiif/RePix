@@ -303,27 +303,49 @@ object SteganographyHelper {
      */
     fun extractArchive(stegoFile: File, outputFile: File): Boolean {
         val detection = detectArchiveOffset(stegoFile) ?: return false
-        val offset = detection.offset
-
-        FileInputStream(stegoFile).use { fis ->
-            var skipped = 0L
-            while (skipped < offset) {
-                val s = fis.skip(offset - skipped)
-                if (s <= 0) break
-                skipped += s
-            }
-            if (skipped < offset) return false
-
-            FileOutputStream(outputFile).use { fos ->
-                val buffer = ByteArray(64 * 1024)
-                var read: Int
-                while (fis.read(buffer).also { read = it } != -1) {
-                    fos.write(buffer, 0, read)
+        return try {
+            FileInputStream(stegoFile).use { fis ->
+                FileOutputStream(outputFile).use { fos ->
+                    extractArchiveStream(fis, fos, detection.offset)
                 }
-                fos.flush()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * 流式提取隐藏压缩包：跳过前置图片数据后直接向目标输出流分块写入，杜绝任何全文件落盘与额外内存开销
+     */
+    fun extractArchiveStream(input: InputStream, output: OutputStream, offset: Long): Boolean {
+        if (!skipFully(input, offset)) return false
+        val buffer = ByteArray(64 * 1024)
+        var read: Int
+        while (input.read(buffer).also { read = it } != -1) {
+            output.write(buffer, 0, read)
+        }
+        output.flush()
+        return true
+    }
+
+    /**
+     * 健壮地跳过指定字节数，兼容不同底层 InputStream.skip 的截断行为
+     */
+    fun skipFully(input: InputStream, bytesToSkip: Long): Boolean {
+        var remaining = bytesToSkip
+        val buffer = ByteArray(minOf(64 * 1024, remaining.toInt()).coerceAtLeast(1024))
+        while (remaining > 0) {
+            val skipped = input.skip(remaining)
+            if (skipped > 0) {
+                remaining -= skipped
+            } else {
+                val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                if (read == -1) return false
+                remaining -= read
             }
         }
-        return true
+        return remaining == 0L
     }
 
     private fun findFirstMagic(bytes: ByteArray, startIndex: Int): Pair<ArchiveType, Int>? {
