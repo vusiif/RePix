@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.Paint
 import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
@@ -27,6 +29,7 @@ import com.example.picencrypt.utils.PicEncryptRowScramble
 import com.example.picencrypt.utils.RowPixelScramble
 import com.example.picencrypt.utils.TomatoScramble
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -84,6 +87,12 @@ class MyImage(
             originalHeight = value.height
         }
 
+    var isDecodeFailed: Boolean = false
+        private set
+
+    var decodeErrorMessage: String? = null
+        private set
+
     init {
         filename = loadFilename()
         inspectDimensions()
@@ -95,22 +104,46 @@ class MyImage(
     private fun inspectDimensions() {
         val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         try {
-            appContext.contentResolver.openInputStream(uri)?.use {
+            val stream = appContext.contentResolver.openInputStream(uri)
+            if (stream == null) {
+                isDecodeFailed = true
+                decodeErrorMessage = "Cannot open input stream for URI"
+                return
+            }
+            stream.use {
                 BitmapFactory.decodeStream(it, null, boundsOptions)
             }
-            originalWidth = boundsOptions.outWidth.coerceAtLeast(0)
-            originalHeight = boundsOptions.outHeight.coerceAtLeast(0)
-            exifInfo = ExifUtils.readExif(appContext, uri)
-        } catch (_: Exception) {}
+            if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) {
+                isDecodeFailed = true
+                decodeErrorMessage = "Invalid image dimensions or unsupported format"
+            } else {
+                originalWidth = boundsOptions.outWidth
+                originalHeight = boundsOptions.outHeight
+                exifInfo = ExifUtils.readExif(appContext, uri)
+            }
+        } catch (e: Exception) {
+            isDecodeFailed = true
+            decodeErrorMessage = e.localizedMessage ?: "Failed to inspect image dimensions"
+        }
     }
 
-    private fun loadFullBitmap(): Bitmap {
-        val loaded = appContext.contentResolver.openInputStream(uri)?.use {
+    fun loadFullBitmap(): Bitmap {
+        val stream = appContext.contentResolver.openInputStream(uri)
+            ?: throw FileNotFoundException("Cannot open stream for URI: $uri")
+        val loaded = stream.use {
             BitmapFactory.decodeStream(it)
-        } ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        } ?: throw IllegalStateException(decodeErrorMessage ?: "BitmapFactory failed to decode image: $uri")
         originalWidth = loaded.width
         originalHeight = loaded.height
         return loaded
+    }
+
+    fun loadFullBitmapResult(): Result<Bitmap> {
+        return try {
+            Result.success(loadFullBitmap())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     fun isBitmapLoaded(): Boolean = _bitmap?.isRecycled == false
@@ -137,6 +170,9 @@ class MyImage(
      * Decode thumbnail on initial load or reload with downsampling (P0-1)
      */
     fun loadThumbnailFromUri(maxSize: Int = 400): Bitmap {
+        if (isDecodeFailed) {
+            return createErrorPlaceholderThumbnail(maxSize)
+        }
         val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         appContext.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, boundsOptions)
@@ -144,24 +180,47 @@ class MyImage(
 
         val outW = boundsOptions.outWidth
         val outH = boundsOptions.outHeight
-        val sampledBitmap = if (outW > 0 && outH > 0) {
-            var sampleSize = 1
-            val maxDim = maxOf(outW, outH)
-            while (maxDim / (sampleSize * 2) >= maxSize) {
-                sampleSize *= 2
-            }
-            val decodeOptions = BitmapFactory.Options().apply {
-                inSampleSize = sampleSize
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            }
-            appContext.contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, decodeOptions)
-            } ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-        } else {
-            Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        if (outW <= 0 || outH <= 0) {
+            isDecodeFailed = true
+            decodeErrorMessage = "Invalid dimensions"
+            return createErrorPlaceholderThumbnail(maxSize)
+        }
+
+        var sampleSize = 1
+        val maxDim = maxOf(outW, outH)
+        while (maxDim / (sampleSize * 2) >= maxSize) {
+            sampleSize *= 2
+        }
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val sampledBitmap = appContext.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, decodeOptions)
+        }
+
+        if (sampledBitmap == null) {
+            isDecodeFailed = true
+            decodeErrorMessage = "Failed to decode thumbnail sample"
+            return createErrorPlaceholderThumbnail(maxSize)
         }
 
         return createThumbnailFromBitmap(sampledBitmap, maxSize)
+    }
+
+    private fun createErrorPlaceholderThumbnail(size: Int = 200): Bitmap {
+        val targetSize = size.coerceIn(100, 400)
+        val bmp = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(android.graphics.Color.DKGRAY)
+        val paint = Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = (targetSize / 10f).coerceAtLeast(14f)
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("⚠️ 加载失败", targetSize / 2f, targetSize / 2f + (paint.textSize / 3f), paint)
+        return bmp
     }
 
     /**
@@ -181,7 +240,14 @@ class MyImage(
     /**
      * Backward-compatible helper: extracts thumbnail from current bitmap
      */
-    fun loadThumbnail(): Bitmap = createThumbnailFromBitmap(bitmap)
+    fun loadThumbnail(): Bitmap {
+        val bmp = try {
+            bitmap
+        } catch (e: Exception) {
+            return createErrorPlaceholderThumbnail()
+        }
+        return createThumbnailFromBitmap(bmp)
+    }
 
     fun process(
         algorithm: Algorithm,
@@ -190,22 +256,37 @@ class MyImage(
         forceCompat: Boolean = false,
         onFallback: (() -> Unit)? = null
     ): Boolean {
+        if (isDecodeFailed) {
+            return false
+        }
+
+        val currentBmp = try {
+            bitmap
+        } catch (e: Exception) {
+            isDecodeFailed = true
+            decodeErrorMessage = e.localizedMessage
+            return false
+        }
+
+        if (currentBmp.width <= 0 || currentBmp.height <= 0) {
+            return false
+        }
+
         // LCG_SHUFFLE: Direct Zero-Copy in-place processing on Bitmap, strictly check JNI result (P0-2)
         if (algorithm == Algorithm.LCG_SHUFFLE) {
             if (!NativeShuffleBridge.isAvailable()) {
                 return false
             }
             val seed = NativeShuffleBridge.stringToSeed(key)
-            val success = NativeShuffleBridge.scrambleBitmap(bitmap, seed, processType == ProcessType.DECRYPT)
+            val success = NativeShuffleBridge.scrambleBitmap(currentBmp, seed, processType == ProcessType.DECRYPT)
             if (!success) {
                 return false
             }
             cachedMetrics = null
-            thumbnail = createThumbnailFromBitmap(bitmap)
+            thumbnail = createThumbnailFromBitmap(currentBmp)
             return true
         }
 
-        val currentBmp = bitmap
         val pixels = IntArray(currentBmp.width * currentBmp.height)
         currentBmp.getPixels(pixels, 0, currentBmp.width, 0, 0, currentBmp.width, currentBmp.height)
         val algoCode = when (algorithm) {

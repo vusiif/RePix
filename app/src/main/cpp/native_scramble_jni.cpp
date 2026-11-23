@@ -4,7 +4,9 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <cstdint>
 
+#include "bitmap_jni_helper.h"
 #include "scramble_common.h"
 #include "tomato_scramble.h"
 #include "block_scramble.h"
@@ -65,6 +67,12 @@ Java_com_example_picencrypt_utils_NativeImageScramble_nativeProcessPixels(
 ) {
     if (!j_pixels || width <= 0 || height <= 0) return nullptr;
 
+    int64_t total_pixels_64 = static_cast<int64_t>(width) * height;
+    if (total_pixels_64 <= 0 || total_pixels_64 > 250000000LL) {
+        LOGE("nativeProcessPixels: Dimensions exceed safety bounds: %lld", static_cast<long long>(total_pixels_64));
+        return nullptr;
+    }
+
     const char* str_key_chars = j_str_key ? env->GetStringUTFChars(j_str_key, nullptr) : "";
     std::string str_key = str_key_chars ? str_key_chars : "";
     if (j_str_key && str_key_chars) {
@@ -116,12 +124,22 @@ Java_com_example_picencrypt_utils_NativeImageScramble_nativeProcessBitmap(
     }
 
     if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
-        LOGE("Only RGBA_8888 format is supported");
+        LOGE("Only RGBA_8888 format is supported, received format: %d", info.format);
         return JNI_FALSE;
     }
 
-    void* pixels_ptr = nullptr;
-    if (AndroidBitmap_lockPixels(env, j_bitmap, &pixels_ptr) < 0 || !pixels_ptr) {
+    int32_t width = static_cast<int32_t>(info.width);
+    int32_t height = static_cast<int32_t>(info.height);
+    if (width <= 0 || height <= 0) return JNI_FALSE;
+
+    int64_t total_pixels_64 = static_cast<int64_t>(width) * height;
+    if (total_pixels_64 <= 0 || total_pixels_64 > 250000000LL) {
+        LOGE("Bitmap dimensions exceed safety bounds");
+        return JNI_FALSE;
+    }
+
+    repix::BitmapLockGuard lock(env, j_bitmap);
+    if (!lock.is_locked()) {
         LOGE("AndroidBitmap_lockPixels failed");
         return JNI_FALSE;
     }
@@ -132,27 +150,43 @@ Java_com_example_picencrypt_utils_NativeImageScramble_nativeProcessBitmap(
         env->ReleaseStringUTFChars(j_str_key, str_key_chars);
     }
 
-    int32_t width = static_cast<int32_t>(info.width);
-    int32_t height = static_cast<int32_t>(info.height);
+    const uint32_t expected_stride = static_cast<uint32_t>(width * sizeof(int32_t));
+    const bool is_tight = (info.stride == expected_stride);
+
+    std::vector<int32_t> compact_buffer;
+    const int32_t* input_pixels = nullptr;
+
+    if (is_tight) {
+        input_pixels = static_cast<const int32_t*>(lock.get_pixels());
+    } else {
+        compact_buffer.resize(width * height);
+        repix::unpack_bitmap_rows(static_cast<const uint8_t*>(lock.get_pixels()),
+                                 compact_buffer.data(), width, height, info.stride);
+        input_pixels = compact_buffer.data();
+    }
 
     auto result = dispatch_scramble(
-        static_cast<const int32_t*>(pixels_ptr), width, height,
+        input_pixels, width, height,
         static_cast<repix::AlgorithmType>(algo_code),
         static_cast<repix::ProcessType>(proc_code),
         str_key, d_key
     );
 
-    bool ok = false;
-    if (!result.pixels.empty() && result.width == width && result.height == height) {
-        std::memcpy(pixels_ptr, result.pixels.data(), result.pixels.size() * sizeof(int32_t));
-        ok = true;
+    if (result.pixels.empty() || result.width != width || result.height != height) {
+        return JNI_FALSE;
     }
 
-    AndroidBitmap_unlockPixels(env, j_bitmap);
-    return ok ? JNI_TRUE : JNI_FALSE;
+    if (is_tight) {
+        std::memcpy(lock.get_pixels(), result.pixels.data(), result.pixels.size() * sizeof(int32_t));
+    } else {
+        repix::pack_bitmap_rows(result.pixels.data(), static_cast<uint8_t*>(lock.get_pixels()),
+                               width, height, info.stride);
+    }
+
+    return JNI_TRUE;
 }
 
-// ---------------- NativeShuffleBridge Zero-Copy API ----------------
+// ---------------- NativeShuffleBridge Stride-Aware API ----------------
 
 JNIEXPORT jboolean JNICALL
 Java_com_example_picencrypt_utils_NativeShuffleBridge_scrambleBitmap(
@@ -165,24 +199,35 @@ Java_com_example_picencrypt_utils_NativeShuffleBridge_scrambleBitmap(
     if (!j_bitmap) return JNI_FALSE;
 
     AndroidBitmapInfo info;
-    void* raw_pixels = nullptr;
-
-    // 1. Get Bitmap structure info
     if (AndroidBitmap_getInfo(env, j_bitmap, &info) < 0) return JNI_FALSE;
 
-    // Must be RGBA_8888
     if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) return JNI_FALSE;
 
-    // 2. Lock underlying pixel memory (True zero-copy)
-    if (AndroidBitmap_lockPixels(env, j_bitmap, &raw_pixels) < 0 || !raw_pixels) return JNI_FALSE;
+    int32_t width = static_cast<int32_t>(info.width);
+    int32_t height = static_cast<int32_t>(info.height);
+    if (width <= 0 || height <= 0) return JNI_FALSE;
 
-    int32_t total_pixels = static_cast<int32_t>(info.width * info.height);
+    int64_t total_pixels_64 = static_cast<int64_t>(width) * height;
+    if (total_pixels_64 <= 0 || total_pixels_64 > 250000000LL) return JNI_FALSE;
 
-    // 3. Perform in-place LCG Fisher-Yates shuffle / unshuffle
-    processShuffleInPlace(reinterpret_cast<int32_t*>(raw_pixels), total_pixels, seed, is_decrypt == JNI_TRUE);
+    repix::BitmapLockGuard lock(env, j_bitmap);
+    if (!lock.is_locked()) return JNI_FALSE;
 
-    // 4. Unlock memory, changes are immediately reflected
-    AndroidBitmap_unlockPixels(env, j_bitmap);
+    int32_t total_pixels = static_cast<int32_t>(total_pixels_64);
+    const uint32_t expected_stride = static_cast<uint32_t>(width * sizeof(int32_t));
+    const bool is_tight = (info.stride == expected_stride);
+
+    if (is_tight) {
+        processShuffleInPlace(reinterpret_cast<int32_t*>(lock.get_pixels()), total_pixels, seed, is_decrypt == JNI_TRUE);
+    } else {
+        std::vector<int32_t> compact_buffer(total_pixels);
+        repix::unpack_bitmap_rows(static_cast<const uint8_t*>(lock.get_pixels()),
+                                 compact_buffer.data(), width, height, info.stride);
+        processShuffleInPlace(compact_buffer.data(), total_pixels, seed, is_decrypt == JNI_TRUE);
+        repix::pack_bitmap_rows(compact_buffer.data(), static_cast<uint8_t*>(lock.get_pixels()),
+                               width, height, info.stride);
+    }
+
     return JNI_TRUE;
 }
 

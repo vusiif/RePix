@@ -1,6 +1,11 @@
 #include <jni.h>
 #include <android/bitmap.h>
 #include <android/log.h>
+#include <vector>
+#include <cstring>
+#include <cstdint>
+
+#include "bitmap_jni_helper.h"
 #include "MirageEngine.hpp"
 
 #define LOG_TAG "MirageTankBridge"
@@ -29,7 +34,7 @@ Java_com_example_picencrypt_utils_MirageTankBridge_processColoredMirageTank(
         return JNI_FALSE;
     }
 
-    // 格式检查：必须是 RGBA_8888
+    // Format check: must be RGBA_8888
     if (coverInfo.format != ANDROID_BITMAP_FORMAT_RGBA_8888 ||
         hiddenInfo.format != ANDROID_BITMAP_FORMAT_RGBA_8888 ||
         outInfo.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
@@ -37,50 +42,78 @@ Java_com_example_picencrypt_utils_MirageTankBridge_processColoredMirageTank(
         return JNI_FALSE;
     }
 
-    // 尺寸一致性检查：表图、里图和输出画布必须严格同尺寸
+    // Dimension check: must match
     if (coverInfo.width != hiddenInfo.width || coverInfo.height != hiddenInfo.height ||
         coverInfo.width != outInfo.width || coverInfo.height != outInfo.height) {
         LOGE("processColoredMirageTank: Bitmaps dimensions mismatch.");
         return JNI_FALSE;
     }
 
-    void* coverPixels = nullptr;
-    void* hiddenPixels = nullptr;
-    void* outPixels = nullptr;
+    int32_t width = static_cast<int32_t>(coverInfo.width);
+    int32_t height = static_cast<int32_t>(coverInfo.height);
+    if (width <= 0 || height <= 0) return JNI_FALSE;
 
-    // 锁定物理内存指针
-    if (AndroidBitmap_lockPixels(env, j_cover_bitmap, &coverPixels) < 0) {
-        LOGE("Failed to lock cover Bitmap pixels.");
+    int64_t total_pixels_64 = static_cast<int64_t>(width) * height;
+    if (total_pixels_64 <= 0 || total_pixels_64 > 250000000LL) {
+        LOGE("processColoredMirageTank: Dimensions exceed safety limit.");
         return JNI_FALSE;
     }
 
-    if (AndroidBitmap_lockPixels(env, j_hidden_bitmap, &hiddenPixels) < 0) {
-        LOGE("Failed to lock hidden Bitmap pixels.");
-        AndroidBitmap_unlockPixels(env, j_cover_bitmap);
+    // RAII lock guard guarantees unlocking on all return paths
+    repix::BitmapLockGuard coverLock(env, j_cover_bitmap);
+    repix::BitmapLockGuard hiddenLock(env, j_hidden_bitmap);
+    repix::BitmapLockGuard outLock(env, j_out_bitmap);
+    if (!coverLock.is_locked() || !hiddenLock.is_locked() || !outLock.is_locked()) {
+        LOGE("processColoredMirageTank: Failed to lock Bitmap pixels.");
         return JNI_FALSE;
     }
 
-    if (AndroidBitmap_lockPixels(env, j_out_bitmap, &outPixels) < 0) {
-        LOGE("Failed to lock out Bitmap pixels.");
-        AndroidBitmap_unlockPixels(env, j_hidden_bitmap);
-        AndroidBitmap_unlockPixels(env, j_cover_bitmap);
-        return JNI_FALSE;
+    const int32_t totalPixels = static_cast<int32_t>(total_pixels_64);
+    const uint32_t expectedStride = static_cast<uint32_t>(width * sizeof(int32_t));
+    const bool allTight = (coverInfo.stride == expectedStride &&
+                           hiddenInfo.stride == expectedStride &&
+                           outInfo.stride == expectedStride);
+
+    if (allTight) {
+        processColoredMirageTank(
+            static_cast<int32_t*>(coverLock.get_pixels()),
+            static_cast<int32_t*>(hiddenLock.get_pixels()),
+            static_cast<int32_t*>(outLock.get_pixels()),
+            totalPixels
+        );
+    } else {
+        std::vector<int32_t> coverCompact(totalPixels);
+        std::vector<int32_t> hiddenCompact(totalPixels);
+        std::vector<int32_t> outCompact(totalPixels);
+
+        if (coverInfo.stride == expectedStride) {
+            std::memcpy(coverCompact.data(), coverLock.get_pixels(), totalPixels * sizeof(int32_t));
+        } else {
+            repix::unpack_bitmap_rows(static_cast<const uint8_t*>(coverLock.get_pixels()),
+                                     coverCompact.data(), width, height, coverInfo.stride);
+        }
+
+        if (hiddenInfo.stride == expectedStride) {
+            std::memcpy(hiddenCompact.data(), hiddenLock.get_pixels(), totalPixels * sizeof(int32_t));
+        } else {
+            repix::unpack_bitmap_rows(static_cast<const uint8_t*>(hiddenLock.get_pixels()),
+                                     hiddenCompact.data(), width, height, hiddenInfo.stride);
+        }
+
+        processColoredMirageTank(
+            coverCompact.data(),
+            hiddenCompact.data(),
+            outCompact.data(),
+            totalPixels
+        );
+
+        if (outInfo.stride == expectedStride) {
+            std::memcpy(outLock.get_pixels(), outCompact.data(), totalPixels * sizeof(int32_t));
+        } else {
+            repix::pack_bitmap_rows(outCompact.data(), static_cast<uint8_t*>(outLock.get_pixels()),
+                                   width, height, outInfo.stride);
+        }
     }
-
-    const int totalPixels = static_cast<int>(coverInfo.width * coverInfo.height);
-
-    // 执行纯 C++ 高性能算法
-    processColoredMirageTank(
-        reinterpret_cast<int32_t*>(coverPixels),
-        reinterpret_cast<int32_t*>(hiddenPixels),
-        reinterpret_cast<int32_t*>(outPixels),
-        totalPixels
-    );
-
-    // 及时释放内存锁定
-    AndroidBitmap_unlockPixels(env, j_out_bitmap);
-    AndroidBitmap_unlockPixels(env, j_hidden_bitmap);
-    AndroidBitmap_unlockPixels(env, j_cover_bitmap);
 
     return JNI_TRUE;
 }
@@ -107,32 +140,64 @@ Java_com_example_picencrypt_utils_MirageTankBridge_processGrayMirageTank(
     if (coverInfo.width != hiddenInfo.width || coverInfo.height != hiddenInfo.height ||
         coverInfo.width != outInfo.width || coverInfo.height != outInfo.height) return JNI_FALSE;
 
-    void* coverPixels = nullptr;
-    void* hiddenPixels = nullptr;
-    void* outPixels = nullptr;
+    int32_t width = static_cast<int32_t>(coverInfo.width);
+    int32_t height = static_cast<int32_t>(coverInfo.height);
+    if (width <= 0 || height <= 0) return JNI_FALSE;
 
-    if (AndroidBitmap_lockPixels(env, j_cover_bitmap, &coverPixels) < 0) return JNI_FALSE;
-    if (AndroidBitmap_lockPixels(env, j_hidden_bitmap, &hiddenPixels) < 0) {
-        AndroidBitmap_unlockPixels(env, j_cover_bitmap);
-        return JNI_FALSE;
+    int64_t total_pixels_64 = static_cast<int64_t>(width) * height;
+    if (total_pixels_64 <= 0 || total_pixels_64 > 250000000LL) return JNI_FALSE;
+
+    repix::BitmapLockGuard coverLock(env, j_cover_bitmap);
+    repix::BitmapLockGuard hiddenLock(env, j_hidden_bitmap);
+    repix::BitmapLockGuard outLock(env, j_out_bitmap);
+    if (!coverLock.is_locked() || !hiddenLock.is_locked() || !outLock.is_locked()) return JNI_FALSE;
+
+    const int32_t totalPixels = static_cast<int32_t>(total_pixels_64);
+    const uint32_t expectedStride = static_cast<uint32_t>(width * sizeof(int32_t));
+    const bool allTight = (coverInfo.stride == expectedStride &&
+                           hiddenInfo.stride == expectedStride &&
+                           outInfo.stride == expectedStride);
+
+    if (allTight) {
+        processGrayMirageTank(
+            static_cast<int32_t*>(coverLock.get_pixels()),
+            static_cast<int32_t*>(hiddenLock.get_pixels()),
+            static_cast<int32_t*>(outLock.get_pixels()),
+            totalPixels
+        );
+    } else {
+        std::vector<int32_t> coverCompact(totalPixels);
+        std::vector<int32_t> hiddenCompact(totalPixels);
+        std::vector<int32_t> outCompact(totalPixels);
+
+        if (coverInfo.stride == expectedStride) {
+            std::memcpy(coverCompact.data(), coverLock.get_pixels(), totalPixels * sizeof(int32_t));
+        } else {
+            repix::unpack_bitmap_rows(static_cast<const uint8_t*>(coverLock.get_pixels()),
+                                     coverCompact.data(), width, height, coverInfo.stride);
+        }
+
+        if (hiddenInfo.stride == expectedStride) {
+            std::memcpy(hiddenCompact.data(), hiddenLock.get_pixels(), totalPixels * sizeof(int32_t));
+        } else {
+            repix::unpack_bitmap_rows(static_cast<const uint8_t*>(hiddenLock.get_pixels()),
+                                     hiddenCompact.data(), width, height, hiddenInfo.stride);
+        }
+
+        processGrayMirageTank(
+            coverCompact.data(),
+            hiddenCompact.data(),
+            outCompact.data(),
+            totalPixels
+        );
+
+        if (outInfo.stride == expectedStride) {
+            std::memcpy(outLock.get_pixels(), outCompact.data(), totalPixels * sizeof(int32_t));
+        } else {
+            repix::pack_bitmap_rows(outCompact.data(), static_cast<uint8_t*>(outLock.get_pixels()),
+                                   width, height, outInfo.stride);
+        }
     }
-    if (AndroidBitmap_lockPixels(env, j_out_bitmap, &outPixels) < 0) {
-        AndroidBitmap_unlockPixels(env, j_hidden_bitmap);
-        AndroidBitmap_unlockPixels(env, j_cover_bitmap);
-        return JNI_FALSE;
-    }
-
-    const int totalPixels = static_cast<int>(coverInfo.width * coverInfo.height);
-    processGrayMirageTank(
-        reinterpret_cast<int32_t*>(coverPixels),
-        reinterpret_cast<int32_t*>(hiddenPixels),
-        reinterpret_cast<int32_t*>(outPixels),
-        totalPixels
-    );
-
-    AndroidBitmap_unlockPixels(env, j_out_bitmap);
-    AndroidBitmap_unlockPixels(env, j_hidden_bitmap);
-    AndroidBitmap_unlockPixels(env, j_cover_bitmap);
 
     return JNI_TRUE;
 }
