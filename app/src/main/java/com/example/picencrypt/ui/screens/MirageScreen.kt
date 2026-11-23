@@ -12,6 +12,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -401,18 +402,36 @@ fun MirageScreen(
                                 steps = 20
                             )
 
-                            // 恢复默认按钮
+                            // 恢复默认与智能推荐按钮
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Button(
+                                    onClick = {
+                                        haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                                        val ok = viewModel.autoOptimizeMirageParams(context)
+                                        if (ok) {
+                                            Toast.makeText(context, context.getString(R.string.mirage_auto_tuned_toast), Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    enabled = viewModel.mirageCoverThumbnail != null && viewModel.mirageHiddenThumbnail != null,
+                                    modifier = Modifier.height(32.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                                ) {
+                                    Text(text = stringResource(id = R.string.mirage_adjust_auto), fontSize = 11.sp)
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
                                 OutlinedButton(
                                     onClick = {
                                         haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                                         viewModel.resetMirageAdjustments()
                                     },
                                     modifier = Modifier.height(32.dp),
-                                    shape = RoundedCornerShape(16.dp)
+                                    shape = RoundedCornerShape(16.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                                 ) {
                                     Text(text = stringResource(id = R.string.mirage_adjust_reset), fontSize = 11.sp)
                                 }

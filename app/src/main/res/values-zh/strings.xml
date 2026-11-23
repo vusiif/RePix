@@ -206,4 +206,12 @@
     <string name="exif_privacy_btn_strip">🛡️ 立即一键脱敏擦除</string>
     <string name="exif_privacy_clean_badge">🛡️ 已安全脱敏</string>
     <string name="exif_privacy_stripped_toast">已成功抹除该图片的 EXIF 敏感信息！</string>
+
+    <!-- 幻影坦克智能推荐与批处理失败重试 -->
+    <string name="mirage_adjust_auto">智能推荐</string>
+    <string name="mirage_auto_tuned_toast">已根据直方图智能推荐最佳亮度与对比度</string>
+    <string name="batch_retry_failed_process">重试失败项 (%1$d)</string>
+    <string name="batch_retry_failed_save">重试保存失败 (%1$d)</string>
+    <string name="batch_failed_items_hint">有 %1$d 张图片处理失败</string>
+    <string name="batch_failed_saves_hint">有 %1$d 张图片保存失败</string>
 </resources>

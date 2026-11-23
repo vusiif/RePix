@@ -206,4 +206,12 @@
     <string name="exif_privacy_btn_strip">🛡️ Strip Privacy Info</string>
     <string name="exif_privacy_clean_badge">🛡️ Stripped</string>
     <string name="exif_privacy_stripped_toast">EXIF privacy metadata has been stripped!</string>
+
+    <!-- Mirage Tank Auto Tuning & Batch Retry -->
+    <string name="mirage_adjust_auto">Auto Tune</string>
+    <string name="mirage_auto_tuned_toast">Recommended brightness and contrast applied from histogram</string>
+    <string name="batch_retry_failed_process">Retry Failed (%1$d)</string>
+    <string name="batch_retry_failed_save">Retry Failed (%1$d)</string>
+    <string name="batch_failed_items_hint">%1$d image(s) failed to process</string>
+    <string name="batch_failed_saves_hint">%1$d image(s) failed to save</string>
 </resources>

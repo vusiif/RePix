@@ -131,6 +131,9 @@ class MainViewModel : ViewModel() {
     var progress by mutableFloatStateOf(0f)
     var isShowProgress by mutableStateOf(false)
     var newImageUriCount by mutableIntStateOf(0)
+    var lastProcessType by mutableStateOf<ProcessType?>(null)
+    val failedProcessImageIds = mutableStateListOf<String>()
+    val failedSaveImageIds = mutableStateListOf<String>()
 
     // ---------------- Tab 1: 图种隐写状态 ----------------
     var stegoMode by mutableIntStateOf(0)
@@ -169,6 +172,24 @@ class MainViewModel : ViewModel() {
         mirageHiddenBrightness = 0f
         mirageHiddenContrast = 1f
         miragePreviewBitmap = null
+    }
+
+    fun autoOptimizeMirageParams(context: Context? = null): Boolean {
+        val cThumb = mirageCoverThumbnail
+        val hThumb = mirageHiddenThumbnail
+        if (cThumb == null || hThumb == null) return false
+
+        val params = com.example.picencrypt.utils.MirageAutoOptimizer.optimize(cThumb, hThumb)
+        mirageCoverBrightness = params.coverBrightness
+        mirageCoverContrast = params.coverContrast
+        mirageHiddenBrightness = params.hiddenBrightness
+        mirageHiddenContrast = params.hiddenContrast
+        miragePreviewBitmap = null
+
+        if (context != null) {
+            generateMiragePreview(context)
+        }
+        return true
     }
 
     // ---------------- Tab 3: 安全保险箱状态 (AES-256-GCM) ----------------
@@ -225,12 +246,16 @@ class MainViewModel : ViewModel() {
 
     fun removeImageAt(index: Int) {
         if (index in images.indices) {
-            images.removeAt(index)
+            val removed = images.removeAt(index)
+            failedProcessImageIds.remove(removed.id)
+            failedSaveImageIds.remove(removed.id)
         }
     }
 
     fun clearAllImages() {
         images.clear()
+        failedProcessImageIds.clear()
+        failedSaveImageIds.clear()
     }
 
     private var batchProcessJob: Job? = null
@@ -264,6 +289,8 @@ class MainViewModel : ViewModel() {
         onFinish: (isEncrypt: Boolean, successCount: Int, failCount: Int, durationMs: Long) -> Unit
     ) {
         if (images.isEmpty() || isShowProgress) return
+        lastProcessType = processType
+        failedProcessImageIds.clear()
         val algoSnapshot = selectedAlgorithm
         val keySnapshot = keyString
         val compatSnapshot = isCompatMode
@@ -277,6 +304,7 @@ class MainViewModel : ViewModel() {
             val snapshot = images.toList()
             var successCount = 0
             var failCount = 0
+            val failedIds = mutableListOf<String>()
             for (i in snapshot.indices) {
                 if (!isActive) break
                 val item = snapshot[i]
@@ -292,6 +320,7 @@ class MainViewModel : ViewModel() {
                     successCount++
                 } else {
                     failCount++
+                    failedIds.add(item.id)
                 }
                 if (hadFallback) {
                     withContext(Dispatchers.Main) { onFallbackToast() }
@@ -302,7 +331,71 @@ class MainViewModel : ViewModel() {
             }
             val durationMs = System.currentTimeMillis() - startTime
             withContext(Dispatchers.Main) {
+                failedProcessImageIds.clear()
+                failedProcessImageIds.addAll(failedIds)
                 // 触发列表通知，确保 Compose 观察到元素属性变化
+                for (i in images.indices) {
+                    images[i] = images[i]
+                }
+                isShowProgress = false
+                onFinish(processType == ProcessType.ENCRYPT, successCount, failCount, durationMs)
+            }
+        }
+    }
+
+    fun retryFailedProcess(
+        processType: ProcessType,
+        onFallbackToast: () -> Unit,
+        onFailedToast: () -> Unit,
+        onFinish: (isEncrypt: Boolean, successCount: Int, failCount: Int, durationMs: Long) -> Unit
+    ) {
+        if (failedProcessImageIds.isEmpty() || isShowProgress) return
+        val targetIds = failedProcessImageIds.toSet()
+        val targetImages = images.filter { it.id in targetIds }
+        if (targetImages.isEmpty()) {
+            failedProcessImageIds.clear()
+            return
+        }
+        lastProcessType = processType
+        val algoSnapshot = selectedAlgorithm
+        val keySnapshot = keyString
+        val compatSnapshot = isCompatMode
+        val typeSnapshot = processType
+        val startTime = System.currentTimeMillis()
+
+        batchProcessJob = viewModelScope.launch(Dispatchers.Default) {
+            isShowProgress = true
+            progress = 0f
+            var successCount = 0
+            var failCount = 0
+            val newlySucceededIds = mutableListOf<String>()
+            for (i in targetImages.indices) {
+                if (!isActive) break
+                val item = targetImages[i]
+                var hadFallback = false
+                val success = item.process(
+                    algoSnapshot,
+                    typeSnapshot,
+                    keySnapshot,
+                    forceCompat = compatSnapshot,
+                    onFallback = { hadFallback = true }
+                )
+                if (success) {
+                    successCount++
+                    newlySucceededIds.add(item.id)
+                } else {
+                    failCount++
+                }
+                if (hadFallback) {
+                    withContext(Dispatchers.Main) { onFallbackToast() }
+                } else if (!success) {
+                    withContext(Dispatchers.Main) { onFailedToast() }
+                }
+                progress = (i + 1).toFloat() / targetImages.size
+            }
+            val durationMs = System.currentTimeMillis() - startTime
+            withContext(Dispatchers.Main) {
+                failedProcessImageIds.removeAll(newlySucceededIds)
                 for (i in images.indices) {
                     images[i] = images[i]
                 }
@@ -360,6 +453,7 @@ class MainViewModel : ViewModel() {
 
     fun saveAllImages(onComplete: (successCount: Int, failCount: Int, durationMs: Long) -> Unit) {
         if (images.isEmpty() || isShowProgress) return
+        failedSaveImageIds.clear()
         val startTime = System.currentTimeMillis()
         val saveConfig = BatchSaveConfig(
             format = exportFormat,
@@ -375,6 +469,7 @@ class MainViewModel : ViewModel() {
             val snapshot = images.toList()
             var successCount = 0
             var failCount = 0
+            val failedIds = mutableListOf<String>()
             for (i in snapshot.indices) {
                 if (!isActive) break
                 val resolvedName = ExportFilenameGenerator.generateFilename(
@@ -392,11 +487,77 @@ class MainViewModel : ViewModel() {
                     stripExif = saveConfig.stripExif,
                     customFilename = resolvedName
                 ) is com.example.picencrypt.model.SaveResult.Success
-                if (ok) successCount++ else failCount++
+                if (ok) {
+                    successCount++
+                } else {
+                    failCount++
+                    failedIds.add(snapshot[i].id)
+                }
                 progress = (i + 1).toFloat() / snapshot.size
             }
             val durationMs = System.currentTimeMillis() - startTime
             withContext(Dispatchers.Main) {
+                failedSaveImageIds.clear()
+                failedSaveImageIds.addAll(failedIds)
+                isShowProgress = false
+                onComplete(successCount, failCount, durationMs)
+            }
+        }
+    }
+
+    fun retryFailedSave(onComplete: (successCount: Int, failCount: Int, durationMs: Long) -> Unit) {
+        if (failedSaveImageIds.isEmpty() || isShowProgress) return
+        val targetIds = failedSaveImageIds.toSet()
+        val targetImages = images.filter { it.id in targetIds }
+        if (targetImages.isEmpty()) {
+            failedSaveImageIds.clear()
+            return
+        }
+        val startTime = System.currentTimeMillis()
+        val saveConfig = BatchSaveConfig(
+            format = exportFormat,
+            quality = exportQuality,
+            stripExif = isStripExifOnExport,
+            filenamePattern = exportFilenamePattern,
+            customPrefix = exportCustomPrefix,
+            algorithmName = selectedAlgorithm.name
+        )
+        batchSaveJob = viewModelScope.launch(Dispatchers.IO) {
+            isShowProgress = true
+            progress = 0f
+            var successCount = 0
+            var failCount = 0
+            val newlySucceededIds = mutableListOf<String>()
+            for (i in targetImages.indices) {
+                if (!isActive) break
+                val item = targetImages[i]
+                val originalIndex = images.indexOf(item).coerceAtLeast(i)
+                val resolvedName = ExportFilenameGenerator.generateFilename(
+                    template = saveConfig.filenamePattern,
+                    prefix = saveConfig.customPrefix,
+                    originalFilename = item.filename,
+                    index = originalIndex,
+                    algorithmName = saveConfig.algorithmName,
+                    extension = saveConfig.format.extension
+                )
+                val ok = item.saveWithDetail(
+                    originalIndex,
+                    format = saveConfig.format,
+                    quality = saveConfig.quality,
+                    stripExif = saveConfig.stripExif,
+                    customFilename = resolvedName
+                ) is com.example.picencrypt.model.SaveResult.Success
+                if (ok) {
+                    successCount++
+                    newlySucceededIds.add(item.id)
+                } else {
+                    failCount++
+                }
+                progress = (i + 1).toFloat() / targetImages.size
+            }
+            val durationMs = System.currentTimeMillis() - startTime
+            withContext(Dispatchers.Main) {
+                failedSaveImageIds.removeAll(newlySucceededIds)
                 isShowProgress = false
                 onComplete(successCount, failCount, durationMs)
             }

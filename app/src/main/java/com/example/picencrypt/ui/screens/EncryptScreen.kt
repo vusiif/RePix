@@ -15,6 +15,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -248,6 +249,62 @@ fun EncryptScreen(
                             }
                         }
 
+                        // 批量混淆处理失败项重试条
+                        if (viewModel.failedProcessImageIds.isNotEmpty() && !viewModel.isShowProgress) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.batch_failed_items_hint, viewModel.failedProcessImageIds.size),
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        fontSize = 12.sp
+                                    )
+                                    Button(
+                                        onClick = {
+                                            viewModel.retryFailedProcess(
+                                                processType = viewModel.lastProcessType ?: ProcessType.ENCRYPT,
+                                                onFallbackToast = {
+                                                    Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                                },
+                                                onFailedToast = {
+                                                    Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                                },
+                                                onFinish = { isEncrypt, successCount, failCount, durationMs ->
+                                                    haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                                                    val toastMsg = BatchMetricsHelper.formatProcessSummary(
+                                                        isEncrypt = isEncrypt,
+                                                        successCount = successCount,
+                                                        failCount = failCount,
+                                                        durationMs = durationMs
+                                                    )
+                                                    Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+                                                }
+                                            )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                        modifier = Modifier.height(28.dp),
+                                        shape = RoundedCornerShape(14.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.batch_retry_failed_process, viewModel.failedProcessImageIds.size),
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onError
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         // 重置与清空按钮
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -320,6 +377,52 @@ fun EncryptScreen(
                                 modifier = Modifier.width(120.dp)
                             ) {
                                 Text(text = stringResource(id = R.string.save_btn))
+                            }
+                        }
+
+                        // 批量保存失败项重试条
+                        if (viewModel.failedSaveImageIds.isNotEmpty() && !viewModel.isShowProgress) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.batch_failed_saves_hint, viewModel.failedSaveImageIds.size),
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        fontSize = 12.sp
+                                    )
+                                    Button(
+                                        onClick = {
+                                            viewModel.retryFailedSave { successCount, failCount, durationMs ->
+                                                haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                                                val msg = BatchMetricsHelper.formatSaveSummary(
+                                                    successCount = successCount,
+                                                    failCount = failCount,
+                                                    durationMs = durationMs
+                                                )
+                                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                        modifier = Modifier.height(28.dp),
+                                        shape = RoundedCornerShape(14.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.batch_retry_failed_save, viewModel.failedSaveImageIds.size),
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onError
+                                        )
+                                    }
+                                }
                             }
                         }
 
