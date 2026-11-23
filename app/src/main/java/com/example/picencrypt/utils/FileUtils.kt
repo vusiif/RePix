@@ -131,7 +131,13 @@ object FileUtils {
 
         val success = writeStreamToDownload(context, outFileName) { outStream ->
             context.contentResolver.openInputStream(stegoUri)?.use { inStream ->
-                SteganographyHelper.extractArchiveStream(inStream, outStream, inspection.offset)
+                SteganographyHelper.extractArchiveStream(
+                    inStream,
+                    outStream,
+                    offset = inspection.offset,
+                    expectedLength = if (inspection.isV2) inspection.archiveSize else -1L,
+                    expectedSha256 = inspection.sha256
+                )
             } ?: false
         }
 

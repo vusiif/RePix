@@ -300,7 +300,7 @@ fun StegoScreen(
                                         Spacer(modifier = Modifier.height(8.dp))
                                         InspectionItem(
                                             name = stringResource(id = R.string.stego_archive_type),
-                                            value = "${inspection.type.name} 压缩包 (.${inspection.type.extension})"
+                                            value = if (inspection.isV2) "${inspection.type.name} 压缩包 (.${inspection.type.extension}) · V2 认证" else "${inspection.type.name} 压缩包 (.${inspection.type.extension})"
                                         )
                                         InspectionItem(
                                             name = stringResource(id = R.string.stego_archive_size),
@@ -310,6 +310,12 @@ fun StegoScreen(
                                             name = stringResource(id = R.string.stego_inject_offset),
                                             value = "${inspection.offset} 字节处 (${FileUtils.formatFileSize(inspection.offset)})"
                                         )
+                                        if (inspection.isV2 && inspection.sha256 != null) {
+                                            InspectionItem(
+                                                name = "SHA-256",
+                                                value = inspection.sha256.joinToString("") { "%02x".format(it) }.take(16) + "…"
+                                            )
+                                        }
                                     }
                                 }
                             } else {

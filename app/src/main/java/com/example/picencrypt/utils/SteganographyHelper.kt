@@ -5,28 +5,95 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.security.MessageDigest
 
 object SteganographyHelper {
 
-    enum class ArchiveType(val extension: String) {
-        ZIP("zip"),
-        RAR("rar"),
-        SEVEN_Z("7z"),
-        UNKNOWN("bin")
+    enum class ArchiveType(val extension: String, val code: Int) {
+        ZIP("zip", 1),
+        RAR("rar", 2),
+        SEVEN_Z("7z", 3),
+        UNKNOWN("bin", 4);
+
+        companion object {
+            fun fromCode(code: Int): ArchiveType = entries.find { it.code == code } ?: UNKNOWN
+        }
     }
+
+    const val TRAILER_V2_SIZE = 64
+    val STEGO_V2_MAGIC = byteArrayOf(0x52, 0x50, 0x58, 0x53, 0x54, 0x45, 0x47, 0x32) // "RPXSTEG2"
 
     data class DetectionResult(
         val type: ArchiveType,
-        val offset: Long
-    )
+        val offset: Long,
+        val isV2: Boolean = false,
+        val archiveSize: Long = 0L,
+        val sha256: ByteArray? = null
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+            other as DetectionResult
+            if (type != other.type) return false
+            if (offset != other.offset) return false
+            if (isV2 != other.isV2) return false
+            if (archiveSize != other.archiveSize) return false
+            if (sha256 != null) {
+                if (other.sha256 == null) return false
+                if (!sha256.contentEquals(other.sha256)) return false
+            } else if (other.sha256 != null) return false
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = type.hashCode()
+            result = 31 * result + offset.hashCode()
+            result = 31 * result + isV2.hashCode()
+            result = 31 * result + archiveSize.hashCode()
+            result = 31 * result + (sha256?.contentHashCode() ?: 0)
+            return result
+        }
+    }
 
     data class StegoInspection(
         val hasArchive: Boolean,
         val type: ArchiveType = ArchiveType.UNKNOWN,
         val offset: Long = 0L,
         val totalSize: Long = 0L,
-        val archiveSize: Long = 0L
-    )
+        val archiveSize: Long = 0L,
+        val isV2: Boolean = false,
+        val sha256: ByteArray? = null
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+            other as StegoInspection
+            if (hasArchive != other.hasArchive) return false
+            if (type != other.type) return false
+            if (offset != other.offset) return false
+            if (totalSize != other.totalSize) return false
+            if (archiveSize != other.archiveSize) return false
+            if (isV2 != other.isV2) return false
+            if (sha256 != null) {
+                if (other.sha256 == null) return false
+                if (!sha256.contentEquals(other.sha256)) return false
+            } else if (other.sha256 != null) return false
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = hasArchive.hashCode()
+            result = 31 * result + type.hashCode()
+            result = 31 * result + offset.hashCode()
+            result = 31 * result + totalSize.hashCode()
+            result = 31 * result + archiveSize.hashCode()
+            result = 31 * result + isV2.hashCode()
+            result = 31 * result + (sha256?.contentHashCode() ?: 0)
+            return result
+        }
+    }
 
     private val ZIP_MAGIC = byteArrayOf(0x50, 0x4B, 0x03, 0x04)
     private val RAR4_MAGIC = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00)
@@ -36,34 +103,84 @@ object SteganographyHelper {
 
     /**
      * 将压缩包直接追加到图片文件的末尾（生成“图种”文件）
+     * @param enableV2 启用 V2 结构化尾部索引与 SHA-256 完整性摘要
      */
     fun createStegoImage(
         imageInput: InputStream,
         archiveInput: InputStream,
         output: OutputStream,
-        bufferSize: Int = 64 * 1024
+        bufferSize: Int = 64 * 1024,
+        enableV2: Boolean = true,
+        archiveType: ArchiveType = ArchiveType.ZIP
     ): Long {
-        var totalBytes = 0L
-        val buffer = ByteArray(bufferSize)
+        if (enableV2) {
+            val digest = MessageDigest.getInstance("SHA-256")
+            var currentOffset = 0L
+            val buffer = ByteArray(bufferSize)
 
-        imageInput.use { img ->
-            var read: Int
-            while (img.read(buffer).also { read = it } != -1) {
-                output.write(buffer, 0, read)
-                totalBytes += read
+            // 1. Write carrier image
+            imageInput.use { img ->
+                var read: Int
+                while (img.read(buffer).also { read = it } != -1) {
+                    output.write(buffer, 0, read)
+                    currentOffset += read
+                }
             }
-        }
 
-        archiveInput.use { arch ->
-            var read: Int
-            while (arch.read(buffer).also { read = it } != -1) {
-                output.write(buffer, 0, read)
-                totalBytes += read
+            val archiveOffset = currentOffset
+            var archiveLength = 0L
+
+            // 2. Write archive payload while calculating SHA-256
+            archiveInput.use { arch ->
+                var read: Int
+                while (arch.read(buffer).also { read = it } != -1) {
+                    output.write(buffer, 0, read)
+                    digest.update(buffer, 0, read)
+                    archiveLength += read
+                }
             }
-        }
 
-        output.flush()
-        return totalBytes
+            val sha256 = digest.digest()
+
+            // 3. Write 64-byte V2 Trailer
+            val trailer = ByteBuffer.allocate(TRAILER_V2_SIZE).apply {
+                putLong(archiveOffset)
+                putLong(archiveLength)
+                putInt(archiveType.code)
+                put(sha256)
+                putShort(2.toShort()) // version 2
+                putShort(0.toShort()) // flags
+                put(STEGO_V2_MAGIC) // 8 bytes: "RPXSTEG2"
+            }.array()
+
+            output.write(trailer)
+            output.flush()
+
+            return archiveOffset + archiveLength + TRAILER_V2_SIZE
+        } else {
+            // Legacy V1 creation without trailer
+            var totalBytes = 0L
+            val buffer = ByteArray(bufferSize)
+
+            imageInput.use { img ->
+                var read: Int
+                while (img.read(buffer).also { read = it } != -1) {
+                    output.write(buffer, 0, read)
+                    totalBytes += read
+                }
+            }
+
+            archiveInput.use { arch ->
+                var read: Int
+                while (arch.read(buffer).also { read = it } != -1) {
+                    output.write(buffer, 0, read)
+                    totalBytes += read
+                }
+            }
+
+            output.flush()
+            return totalBytes
+        }
     }
 
     /**
@@ -72,19 +189,88 @@ object SteganographyHelper {
     fun createStegoImage(
         imageFile: File,
         archiveFile: File,
-        outputFile: File
+        outputFile: File,
+        enableV2: Boolean = true,
+        archiveType: ArchiveType = ArchiveType.ZIP
     ): Long {
         return createStegoImage(
             FileInputStream(imageFile),
             FileInputStream(archiveFile),
-            FileOutputStream(outputFile)
+            FileOutputStream(outputFile),
+            enableV2 = enableV2,
+            archiveType = archiveType
         )
     }
 
     /**
-     * 流式预检探查：直接在流上探查隐藏压缩包，避免完整复制文件带来的大 I/O 阻塞
+     * 解析 Stego V2 64-byte 尾部索引
+     */
+    fun parseV2Trailer(trailerBytes: ByteArray, totalFileSize: Long = 0L): DetectionResult? {
+        if (trailerBytes.size != TRAILER_V2_SIZE) return null
+        for (i in 0 until 8) {
+            if (trailerBytes[56 + i] != STEGO_V2_MAGIC[i]) return null
+        }
+        val buffer = ByteBuffer.wrap(trailerBytes)
+        val offset = buffer.long
+        val length = buffer.long
+        val typeCode = buffer.int
+        val sha256 = ByteArray(32)
+        buffer.get(sha256)
+        val version = buffer.short
+        val flags = buffer.short
+
+        if (version.toInt() != 2) return null
+        if (offset < 8L || length <= 0L) return null
+        if (totalFileSize > 0L && offset + length + TRAILER_V2_SIZE != totalFileSize) {
+            return null
+        }
+        return DetectionResult(
+            type = ArchiveType.fromCode(typeCode),
+            offset = offset,
+            isV2 = true,
+            archiveSize = length,
+            sha256 = sha256
+        )
+    }
+
+    /**
+     * 流式预检探查：优先通过文件尾部通道执行 O(1) V2 秒级检索，若非 V2 则平滑降级至 V1 扫描
      */
     fun detectArchiveFromStream(input: InputStream, totalSize: Long = 0L): StegoInspection {
+        // 1. 尝试通过可寻址通道在 O(1) 内命中 V2 Trailer
+        if (totalSize >= TRAILER_V2_SIZE + 16L) {
+            val channel = (input as? FileInputStream)?.channel
+            if (channel != null) {
+                try {
+                    val currentPos = channel.position()
+                    channel.position(totalSize - TRAILER_V2_SIZE)
+                    val trailerBuffer = ByteBuffer.allocate(TRAILER_V2_SIZE)
+                    while (trailerBuffer.hasRemaining()) {
+                        val read = channel.read(trailerBuffer)
+                        if (read == -1) break
+                    }
+                    if (!trailerBuffer.hasRemaining()) {
+                        val v2 = parseV2Trailer(trailerBuffer.array(), totalSize)
+                        if (v2 != null) {
+                            return StegoInspection(
+                                hasArchive = true,
+                                type = v2.type,
+                                offset = v2.offset,
+                                totalSize = totalSize,
+                                archiveSize = v2.archiveSize,
+                                isV2 = true,
+                                sha256 = v2.sha256
+                            )
+                        }
+                    }
+                    channel.position(currentPos)
+                } catch (e: Exception) {
+                    // Fall back to sequential scan
+                }
+            }
+        }
+
+        // 2. 传统 V1 流式扫描兜底
         return try {
             input.use { stream ->
                 var currentOffset = 0L
@@ -179,7 +365,8 @@ object SteganographyHelper {
                         type = foundResult.type,
                         offset = foundResult.offset,
                         totalSize = totalSize,
-                        archiveSize = archSize
+                        archiveSize = archSize,
+                        isV2 = false
                     )
                 } else {
                     StegoInspection(
@@ -195,20 +382,35 @@ object SteganographyHelper {
     }
 
     /**
-     * 智能扫描文件，优先通过 PNG IEND / JPEG EOI 定位真实图片结束边界，
-     * 避免图片内部压缩数据随机特征码假阳性（P0-3 优化）
+     * 智能扫描文件：优先以 O(1) 检查末尾 V2 Trailer，若非 V2 则通过 PNG IEND / 启发式扫描兜底
      */
     fun detectArchiveOffset(stegoFile: File): DetectionResult? {
         if (!stegoFile.exists() || stegoFile.length() < 32) return null
 
-        // 1. 尝试通过标准容器头部定位精确文件尾
+        // 1. O(1) 检索 V2 Trailer
+        if (stegoFile.length() >= TRAILER_V2_SIZE + 16L) {
+            try {
+                RandomAccessFile(stegoFile, "r").use { raf ->
+                    raf.seek(stegoFile.length() - TRAILER_V2_SIZE)
+                    val trailerBytes = ByteArray(TRAILER_V2_SIZE)
+                    raf.readFully(trailerBytes)
+                    val v2Result = parseV2Trailer(trailerBytes, stegoFile.length())
+                    if (v2Result != null) {
+                        return v2Result
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore and fall back to V1 heuristic scan
+            }
+        }
+
+        // 2. V1 启发式定位
         val pngEnd = findPngImageEnd(stegoFile)
         val searchStartOffset = when {
             pngEnd != null && pngEnd < stegoFile.length() -> pngEnd
-            else -> 16L // 通用兜底，避开最前导 Header
+            else -> 16L
         }
 
-        // 2. 从目标起始偏移开始进行特征码搜索
         return scanForArchive(stegoFile, searchStartOffset)
     }
 
@@ -236,11 +438,10 @@ object SteganographyHelper {
                     val type = String(chunkHeader, 4, 4, Charsets.US_ASCII)
 
                     if (type == "IEND") {
-                        // IEND 数据长度为 0，后面跟 4 字节 CRC
                         return currentOffset + length.toLong() + 4L
                     }
 
-                    val skipBytes = length.toLong() + 4L // 数据 + CRC
+                    val skipBytes = length.toLong() + 4L
                     var skipped = 0L
                     while (skipped < skipBytes) {
                         val s = fis.skip(skipBytes - skipped)
@@ -258,7 +459,6 @@ object SteganographyHelper {
 
     private fun scanForArchive(file: File, startOffset: Long): DetectionResult? {
         FileInputStream(file).use { fis ->
-            // 跳过图片前置数据
             var skipped = 0L
             while (skipped < startOffset) {
                 val s = fis.skip(startOffset - skipped)
@@ -287,7 +487,7 @@ object SteganographyHelper {
                 if (found != null) {
                     val relativeOffset = found.second
                     val actualOffset = (currentPos - prevOverlap.size) + relativeOffset
-                    return DetectionResult(found.first, actualOffset)
+                    return DetectionResult(found.first, actualOffset, isV2 = false)
                 }
 
                 val overlapLen = minOf(16, read)
@@ -306,7 +506,13 @@ object SteganographyHelper {
         return try {
             FileInputStream(stegoFile).use { fis ->
                 FileOutputStream(outputFile).use { fos ->
-                    extractArchiveStream(fis, fos, detection.offset)
+                    extractArchiveStream(
+                        fis,
+                        fos,
+                        detection.offset,
+                        expectedLength = if (detection.isV2) detection.archiveSize else -1L,
+                        expectedSha256 = detection.sha256
+                    )
                 }
             }
         } catch (e: Exception) {
@@ -316,17 +522,48 @@ object SteganographyHelper {
     }
 
     /**
-     * 流式提取隐藏压缩包：跳过前置图片数据后直接向目标输出流分块写入，杜绝任何全文件落盘与额外内存开销
+     * 流式提取隐藏压缩包：跳过前置图片数据后直接向目标输出流分块写入。
+     * 若提供了 expectedLength 与 expectedSha256，则执行精准长度截断与哈希校验，杜绝截断或篡改。
      */
-    fun extractArchiveStream(input: InputStream, output: OutputStream, offset: Long): Boolean {
+    fun extractArchiveStream(
+        input: InputStream,
+        output: OutputStream,
+        offset: Long,
+        expectedLength: Long = -1L,
+        expectedSha256: ByteArray? = null
+    ): Boolean {
         if (!skipFully(input, offset)) return false
         val buffer = ByteArray(64 * 1024)
-        var read: Int
-        while (input.read(buffer).also { read = it } != -1) {
-            output.write(buffer, 0, read)
+
+        if (expectedLength > 0L) {
+            val digest = if (expectedSha256 != null) MessageDigest.getInstance("SHA-256") else null
+            var remaining = expectedLength
+            while (remaining > 0L) {
+                val toRead = minOf(buffer.size.toLong(), remaining).toInt()
+                val read = input.read(buffer, 0, toRead)
+                if (read == -1) return false
+                output.write(buffer, 0, read)
+                digest?.update(buffer, 0, read)
+                remaining -= read
+            }
+            output.flush()
+
+            if (expectedSha256 != null && digest != null) {
+                val actual = digest.digest()
+                if (!actual.contentEquals(expectedSha256)) {
+                    return false
+                }
+            }
+            return true
+        } else {
+            // Legacy V1 mode: stream until EOF
+            var read: Int
+            while (input.read(buffer).also { read = it } != -1) {
+                output.write(buffer, 0, read)
+            }
+            output.flush()
+            return true
         }
-        output.flush()
-        return true
     }
 
     /**
