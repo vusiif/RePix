@@ -72,6 +72,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.example.picencrypt.utils.performHapticIf
+import com.example.picencrypt.data.PreferencesRepository
 import com.example.picencrypt.ui.theme.PicEncryptTheme
 import com.example.picencrypt.viewmodel.MainViewModel
 
@@ -81,6 +82,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PreferencesRepository.init(this)
         viewModel.initPreferences(this)
         handleIncomingIntent(intent)
         setContent {

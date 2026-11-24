@@ -53,7 +53,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import java.util.Locale
@@ -79,6 +78,10 @@ import com.example.picencrypt.R
 import com.example.picencrypt.model.Algorithm
 import com.example.picencrypt.ui.components.MethodAndKeySettings
 import com.example.picencrypt.ui.components.ImageViewerDialog
+import com.example.picencrypt.ui.components.HistogramChart
+import com.example.picencrypt.ui.components.EmptyStateCard
+import com.example.picencrypt.ui.components.ExifPrivacyDialog
+import com.example.picencrypt.ui.components.BatchProcessActionButtons
 import com.example.picencrypt.utils.BatchMetricsHelper
 import com.example.picencrypt.utils.performHapticIf
 import com.example.picencrypt.utils.ImageScramble.ProcessType
@@ -181,73 +184,38 @@ fun EncryptScreen(
                         )
 
                         // 批量混淆与解混淆操作按钮
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceEvenly,
+                        val triggerBatchProcess: (ProcessType) -> Unit = { processType ->
+                            if (checkKeyValid()) {
+                                val startMsg = if (processType == ProcessType.ENCRYPT) R.string.start_encryption else R.string.start_decryption
+                                Toast.makeText(context, context.getString(startMsg), Toast.LENGTH_SHORT).show()
+                                viewModel.processAllImages(
+                                    processType = processType,
+                                    onFallbackToast = {
+                                        Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
+                                    },
+                                    onFailedToast = {
+                                        Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
+                                    },
+                                    onFinish = { isEncrypt, successCount, failCount, durationMs ->
+                                        haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
+                                        val toastMsg = BatchMetricsHelper.formatProcessSummary(
+                                            isEncrypt = isEncrypt,
+                                            successCount = successCount,
+                                            failCount = failCount,
+                                            durationMs = durationMs
+                                        )
+                                        Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+                        }
+
+                        BatchProcessActionButtons(
+                            onTriggerProcess = triggerBatchProcess,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 5.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    if (checkKeyValid()) {
-                                        Toast.makeText(context, context.getString(R.string.start_encryption), Toast.LENGTH_SHORT).show()
-                                        viewModel.processAllImages(
-                                            processType = ProcessType.ENCRYPT,
-                                            onFallbackToast = {
-                                                Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
-                                            },
-                                            onFailedToast = {
-                                                Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
-                                            },
-                                            onFinish = { isEncrypt, successCount, failCount, durationMs ->
-                                                haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
-                                                val toastMsg = BatchMetricsHelper.formatProcessSummary(
-                                                    isEncrypt = isEncrypt,
-                                                    successCount = successCount,
-                                                    failCount = failCount,
-                                                    durationMs = durationMs
-                                                )
-                                                Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
-                                            }
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.width(120.dp)
-                            ) {
-                                Text(text = stringResource(id = R.string.encrypt_btn))
-                            }
-
-                            Button(
-                                onClick = {
-                                    if (checkKeyValid()) {
-                                        Toast.makeText(context, context.getString(R.string.start_decryption), Toast.LENGTH_SHORT).show()
-                                        viewModel.processAllImages(
-                                            processType = ProcessType.DECRYPT,
-                                            onFallbackToast = {
-                                                Toast.makeText(context, context.getString(R.string.fallback_to_compat_toast), Toast.LENGTH_SHORT).show()
-                                            },
-                                            onFailedToast = {
-                                                Toast.makeText(context, context.getString(R.string.process_failed_toast), Toast.LENGTH_SHORT).show()
-                                            },
-                                            onFinish = { isEncrypt, successCount, failCount, durationMs ->
-                                                haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
-                                                val toastMsg = BatchMetricsHelper.formatProcessSummary(
-                                                    isEncrypt = isEncrypt,
-                                                    successCount = successCount,
-                                                    failCount = failCount,
-                                                    durationMs = durationMs
-                                                )
-                                                Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
-                                            }
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.width(120.dp)
-                            ) {
-                                Text(text = stringResource(id = R.string.decrypt_btn))
-                            }
-                        }
+                        )
 
                         // 批量混淆处理失败项重试条
                         if (viewModel.failedProcessImageIds.isNotEmpty() && !viewModel.isShowProgress) {
@@ -945,294 +913,5 @@ fun EncryptScreen(
                 }
             )
         }
-    }
-}
-
-/**
- * 经典 RGB 三通道直方图分布图组件
- */
-@Composable
-fun HistogramChart(
-    rHist: FloatArray,
-    gHist: FloatArray,
-    bHist: FloatArray,
-    modifier: Modifier = Modifier
-) {
-    androidx.compose.foundation.Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val binCount = 32
-        val binWidth = w / binCount
-
-        // Background reference grid lines for spectrum distribution
-        val gridColor = Color.Gray.copy(alpha = 0.22f)
-        drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, h * 0.25f), androidx.compose.ui.geometry.Offset(w, h * 0.25f), strokeWidth = 1f)
-        drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, h * 0.50f), androidx.compose.ui.geometry.Offset(w, h * 0.50f), strokeWidth = 1f)
-        drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, h * 0.75f), androidx.compose.ui.geometry.Offset(w, h * 0.75f), strokeWidth = 1f)
-        drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, h), androidx.compose.ui.geometry.Offset(w, h), strokeWidth = 2f)
-
-        fun drawChannel(hist: FloatArray, color: Color) {
-            val fillPath = Path()
-            val strokePath = Path()
-            fillPath.moveTo(0f, h)
-            for (i in 0 until binCount) {
-                val value = hist.getOrElse(i) { 0f }.coerceIn(0f, 1f)
-                val x = i * binWidth + binWidth / 2f
-                val y = h - (value * h * 0.88f)
-                fillPath.lineTo(x, y)
-                if (i == 0) strokePath.moveTo(x, y) else strokePath.lineTo(x, y)
-            }
-            fillPath.lineTo(w, h)
-            fillPath.close()
-            drawPath(fillPath, color.copy(alpha = 0.28f))
-            drawPath(strokePath, color.copy(alpha = 0.85f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
-        }
-
-        drawChannel(rHist, Color.Red)
-        drawChannel(gHist, Color.Green)
-        drawChannel(bHist, Color.Blue)
-    }
-}
-
-
-/**
- * 优雅的空状态引导卡片，降低初次使用与空任务时的操作门槛
- */
-@Composable
-fun EmptyStateCard(
-    onSelectImages: () -> Unit,
-    onLoadDemoSample: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth(0.95f)
-            .padding(bottom = 20.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        )
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp)
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
-                modifier = Modifier.size(68.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(text = "🖼️", fontSize = 32.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Text(
-                text = stringResource(id = R.string.empty_state_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = stringResource(id = R.string.empty_state_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 10.dp)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                listOf(
-                    stringResource(id = R.string.empty_state_badge_scramble),
-                    stringResource(id = R.string.empty_state_badge_metrics),
-                    stringResource(id = R.string.empty_state_badge_lossless)
-                ).forEach { badge ->
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(horizontal = 2.dp)
-                    ) {
-                        Text(
-                            text = badge,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Button(
-                onClick = onSelectImages,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = stringResource(id = R.string.empty_state_btn_select),
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            OutlinedButton(
-                onClick = onLoadDemoSample,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    text = "🪄 " + stringResource(id = R.string.empty_state_btn_demo),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-    }
-}
-
-
-/**
- * EXIF 隐私元数据报告与一键脱敏对话框
- */
-@Composable
-fun ExifPrivacyDialog(
-    image: com.example.picencrypt.model.MyImage,
-    onDismiss: () -> Unit,
-    onStripExif: () -> Unit
-) {
-    val info = image.exifInfo
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "🛡️ ")
-                Text(
-                    text = stringResource(id = R.string.exif_privacy_dialog_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-            ) {
-                Text(
-                    text = image.filename,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (info == null || info.isClean) {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "✨ 该图片暂无检测到 GPS 地理位置或敏感设备元数据，状态十分安全！",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(12.dp)
-                        )
-                    }
-                } else {
-                    if (info.hasGps && info.formatCoordinates() != null) {
-                        PrivacyInfoRow(
-                            label = stringResource(id = R.string.exif_privacy_gps_label),
-                            value = info.formatCoordinates()!!,
-                            isWarning = true
-                        )
-                    }
-                    val dev = info.getDeviceDescription()
-                    if (dev != null) {
-                        PrivacyInfoRow(
-                            label = stringResource(id = R.string.exif_privacy_device_label),
-                            value = dev,
-                            isWarning = false
-                        )
-                    }
-                    if (!info.dateTime.isNullOrBlank()) {
-                        PrivacyInfoRow(
-                            label = stringResource(id = R.string.exif_privacy_datetime_label),
-                            value = info.dateTime,
-                            isWarning = false
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "⚠️ 包含 GPS 地理坐标的照片若在社交平台原图发送，可能会暴露精确居住或出行位置隐私。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 11.sp
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            if (info != null && !info.isClean) {
-                Button(
-                    onClick = onStripExif,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text(text = stringResource(id = R.string.exif_privacy_btn_strip))
-                }
-            }
-        },
-        dismissButton = {
-            OutlinedButton(onClick = onDismiss) {
-                Text(text = "关闭")
-            }
-        }
-    )
-}
-
-@Composable
-private fun PrivacyInfoRow(label: String, value: String, isWarning: Boolean) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-        )
     }
 }

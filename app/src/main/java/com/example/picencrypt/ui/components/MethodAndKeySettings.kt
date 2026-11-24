@@ -28,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -56,7 +55,6 @@ fun MethodAndKeySettings(
     isExpandedAllowed: Boolean = true
 ) {
     val focusManager = LocalFocusManager.current
-    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
     ExposedDropdownMenuBox(
@@ -162,7 +160,7 @@ fun MethodAndKeySettings(
         }
         Switch(
             checked = viewModel.isHapticFeedbackEnabled,
-            onCheckedChange = { viewModel.setHapticFeedbackEnabled(it, context) }
+            onCheckedChange = { viewModel.setHapticFeedbackEnabled(it) }
         )
     }
 
@@ -188,7 +186,7 @@ fun MethodAndKeySettings(
             checked = viewModel.isStripExifOnExport,
             onCheckedChange = {
                 haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
-                viewModel.setStripExifOnExport(it, context)
+                viewModel.setStripExifOnExport(it)
             }
         )
     }
@@ -237,7 +235,7 @@ fun MethodAndKeySettings(
                     .clip(RoundedCornerShape(12.dp))
                     .clickable {
                         haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
-                        viewModel.setAppThemeMode(themeMode, context)
+                        viewModel.setAppThemeMode(themeMode)
                     }
             ) {
                 Text(
@@ -295,7 +293,7 @@ fun MethodAndKeySettings(
                     .clip(RoundedCornerShape(12.dp))
                     .clickable {
                         haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
-                        viewModel.setExportFormat(format, context)
+                        viewModel.setExportFormat(format)
                     }
             ) {
                 Text(
@@ -351,7 +349,7 @@ fun MethodAndKeySettings(
                     if (q % 5 == 0) {
                         haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
                     }
-                    viewModel.setExportQuality(q, context)
+                    viewModel.setExportQuality(q)
                 }
             },
             valueRange = 50f..100f,
@@ -384,7 +382,7 @@ fun MethodAndKeySettings(
                         .clip(RoundedCornerShape(8.dp))
                         .clickable {
                             haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
-                            viewModel.setExportQuality(presetQ, context)
+                            viewModel.setExportQuality(presetQ)
                         }
                 ) {
                     Text(
@@ -507,7 +505,7 @@ fun MethodAndKeySettings(
                     .clip(RoundedCornerShape(8.dp))
                     .clickable {
                         haptic.performHapticIf(HapticFeedbackType.TextHandleMove, viewModel.isHapticFeedbackEnabled)
-                        viewModel.setExportFilenamePattern(pattern, context)
+                        viewModel.setExportFilenamePattern(pattern)
                     }
             ) {
                 Text(
@@ -524,7 +522,7 @@ fun MethodAndKeySettings(
     // Custom Prefix TextField
     TextField(
         value = viewModel.exportCustomPrefix,
-        onValueChange = { viewModel.setExportCustomPrefix(it, context) },
+        onValueChange = { viewModel.setExportCustomPrefix(it) },
         label = { Text(stringResource(id = R.string.export_prefix_label), fontSize = 11.sp) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),

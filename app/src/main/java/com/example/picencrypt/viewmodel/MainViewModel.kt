@@ -32,9 +32,12 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
+import com.example.picencrypt.data.PreferencesRepository
 import java.io.FileOutputStream
 
-class MainViewModel : ViewModel() {
+class MainViewModel(
+    private val preferencesRepository: PreferencesRepository = PreferencesRepository.getInstance()
+) : ViewModel() {
 
     // ---------------- 导航与弹窗全局状态 ----------------
     var currentTab by mutableIntStateOf(0)
@@ -46,78 +49,66 @@ class MainViewModel : ViewModel() {
     var isHapticFeedbackEnabled by mutableStateOf(true)
     var appThemeMode by mutableStateOf(AppThemeMode.FOLLOW_SYSTEM)
     var isStripExifOnExport by mutableStateOf(true)
+    var exportFormat by mutableStateOf(ImageExportFormat.PNG)
     var exportQuality by mutableIntStateOf(90)
     var exportFilenamePattern by mutableStateOf(ExportFilenameGenerator.PATTERN_TIMESTAMP)
     var exportCustomPrefix by mutableStateOf("RePix")
 
-    fun initPreferences(context: Context) {
-        val sp = context.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
-        isHapticFeedbackEnabled = sp.getBoolean("key_haptic_feedback", true)
-        val themeId = sp.getInt("key_theme_mode", AppThemeMode.FOLLOW_SYSTEM.id)
-        appThemeMode = AppThemeMode.fromId(themeId)
-        isStripExifOnExport = sp.getBoolean("key_strip_exif_on_export", true)
-        val formatName = sp.getString("key_export_format", ImageExportFormat.PNG.name) ?: ImageExportFormat.PNG.name
-        exportFormat = ImageExportFormat.entries.find { it.name == formatName } ?: ImageExportFormat.PNG
-        exportQuality = sp.getInt("key_export_quality", 90)
-        exportFilenamePattern = sp.getString("key_export_filename_pattern", ExportFilenameGenerator.PATTERN_TIMESTAMP) ?: ExportFilenameGenerator.PATTERN_TIMESTAMP
-        exportCustomPrefix = sp.getString("key_export_custom_prefix", "RePix") ?: "RePix"
+    init {
+        loadPreferencesFromRepository()
+    }
+
+    private fun loadPreferencesFromRepository() {
+        isHapticFeedbackEnabled = preferencesRepository.isHapticFeedbackEnabled()
+        appThemeMode = preferencesRepository.getAppThemeMode()
+        isStripExifOnExport = preferencesRepository.isStripExifOnExport()
+        exportFormat = preferencesRepository.getExportFormat()
+        exportQuality = preferencesRepository.getExportQuality()
+        exportFilenamePattern = preferencesRepository.getExportFilenamePattern()
+        exportCustomPrefix = preferencesRepository.getExportCustomPrefix()
+    }
+
+    fun initPreferences(context: Context? = null) {
+        if (context != null) {
+            PreferencesRepository.init(context)
+        }
+        loadPreferencesFromRepository()
     }
 
     fun setHapticFeedbackEnabled(enabled: Boolean, context: Context? = null) {
         isHapticFeedbackEnabled = enabled
-        context?.let {
-            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
-            sp.edit().putBoolean("key_haptic_feedback", enabled).apply()
-        }
+        preferencesRepository.setHapticFeedbackEnabled(enabled)
     }
 
     fun setAppThemeMode(mode: AppThemeMode, context: Context? = null) {
         appThemeMode = mode
-        context?.let {
-            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
-            sp.edit().putInt("key_theme_mode", mode.id).apply()
-        }
+        preferencesRepository.setAppThemeMode(mode)
     }
 
     fun setStripExifOnExport(enabled: Boolean, context: Context? = null) {
         isStripExifOnExport = enabled
-        context?.let {
-            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
-            sp.edit().putBoolean("key_strip_exif_on_export", enabled).apply()
-        }
+        preferencesRepository.setStripExifOnExport(enabled)
     }
 
     fun setExportFormat(format: ImageExportFormat, context: Context? = null) {
         exportFormat = format
-        context?.let {
-            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
-            sp.edit().putString("key_export_format", format.name).apply()
-        }
+        preferencesRepository.setExportFormat(format)
     }
 
     fun setExportQuality(quality: Int, context: Context? = null) {
         val clamped = quality.coerceIn(10, 100)
         exportQuality = clamped
-        context?.let {
-            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
-            sp.edit().putInt("key_export_quality", clamped).apply()
-        }
+        preferencesRepository.setExportQuality(clamped)
     }
 
     fun setExportFilenamePattern(pattern: String, context: Context? = null) {
         exportFilenamePattern = pattern
-        context?.let {
-            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
-            sp.edit().putString("key_export_filename_pattern", pattern).apply()
-        }
+        preferencesRepository.setExportFilenamePattern(pattern)
     }
 
     fun setExportCustomPrefix(prefix: String, context: Context? = null) {
         exportCustomPrefix = prefix
-        context?.let {
-            val sp = it.getSharedPreferences("repix_prefs", Context.MODE_PRIVATE)
-            sp.edit().putString("key_export_custom_prefix", prefix).apply()
-        }
+        preferencesRepository.setExportCustomPrefix(prefix)
     }
 
     // ---------------- Tab 0: 图片混淆状态 ----------------
@@ -126,7 +117,6 @@ class MainViewModel : ViewModel() {
     var keyString by mutableStateOf("1")
     var isCompatMode by mutableStateOf(false)
     var isDropdownMenuExpanded by mutableStateOf(false)
-    var exportFormat by mutableStateOf(ImageExportFormat.PNG)
 
     var progress by mutableFloatStateOf(0f)
     var isShowProgress by mutableStateOf(false)

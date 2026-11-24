@@ -79,11 +79,20 @@ object MirageTankBridge {
             targetH = (targetH / ratio).toInt().coerceAtLeast(1)
         }
 
-        val scaledCover = transformBitmap(cover, targetW, targetH, mode).ensureArgb8888()
-        val scaledHidden = transformBitmap(hidden, targetW, targetH, mode).ensureArgb8888()
+        val scaledCover = transformAndEnsureArgb8888(cover, targetW, targetH, mode)
+        val scaledHidden = transformAndEnsureArgb8888(hidden, targetW, targetH, mode)
         val outBitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
 
         return Triple(scaledCover, scaledHidden, outBitmap)
+    }
+
+    private fun transformAndEnsureArgb8888(src: Bitmap, targetW: Int, targetH: Int, mode: MirageScaleMode): Bitmap {
+        val transformed = transformBitmap(src, targetW, targetH, mode)
+        val ensured = transformed.ensureArgb8888()
+        if (ensured !== transformed && transformed !== src && !transformed.isRecycled) {
+            transformed.recycle()
+        }
+        return ensured
     }
 
     private fun transformBitmap(src: Bitmap, targetW: Int, targetH: Int, mode: MirageScaleMode): Bitmap {
@@ -144,13 +153,36 @@ object MirageTankBridge {
         val adjustedHidden = adjustBrightnessContrast(hidden, hiddenBrightness, hiddenContrast)
         val (scaledCover, scaledHidden, outBitmap) = alignBitmaps(adjustedCover, adjustedHidden, maxDimension, mode)
 
-        val success = if (isColored) {
-            processColoredMirageTank(scaledCover, scaledHidden, outBitmap)
-        } else {
-            processGrayMirageTank(scaledCover, scaledHidden, outBitmap)
+        val success = try {
+            if (isColored) {
+                processColoredMirageTank(scaledCover, scaledHidden, outBitmap)
+            } else {
+                processGrayMirageTank(scaledCover, scaledHidden, outBitmap)
+            }
+        } finally {
+            // Safely recycle intermediate scaled and adjusted bitmaps to avoid heap bloat
+            if (scaledCover !== cover && !scaledCover.isRecycled) {
+                scaledCover.recycle()
+            }
+            if (scaledHidden !== hidden && !scaledHidden.isRecycled) {
+                scaledHidden.recycle()
+            }
+            if (adjustedCover !== cover && adjustedCover !== scaledCover && !adjustedCover.isRecycled) {
+                adjustedCover.recycle()
+            }
+            if (adjustedHidden !== hidden && adjustedHidden !== scaledHidden && !adjustedHidden.isRecycled) {
+                adjustedHidden.recycle()
+            }
         }
 
-        return if (success) outBitmap else null
+        return if (success) {
+            outBitmap
+        } else {
+            if (!outBitmap.isRecycled) {
+                outBitmap.recycle()
+            }
+            null
+        }
     }
 
     /**
