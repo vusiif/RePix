@@ -19,19 +19,20 @@ class CryptoUtilsTest {
         val password = "StrongPassword@2026!".toCharArray()
         val filename = "secret_image.png"
 
-        // Encrypt (RPX V2)
+        // Encrypt (Default RPX V3)
         val encrypted = CryptoUtils.encryptBytes(plainBytes, password, filename)
         assertTrue(encrypted.size > plainBytes.size)
 
-        // Inspect header
+        // Inspect header - in V3, filename is protected/hidden in header!
         val header = CryptoUtils.inspectHeader(encrypted.inputStream())
-        assertEquals(filename, header?.originalFilename)
+        assertTrue("V3 filename must be protected and empty in outer header", header?.originalFilename.isNullOrEmpty())
+        assertTrue("isFilenameProtected must be true", header?.isFilenameProtected == true)
         assertEquals(plainBytes.size.toLong(), header?.plainLength)
         assertEquals(CryptoUtils.CURRENT_VERSION, header?.version)
         assertEquals(CryptoUtils.PBKDF2_ITERATIONS_V2, header?.iterations)
         assertTrue(header?.aadBytes != null)
 
-        // Decrypt with correct password
+        // Decrypt with correct password - restores original filename securely from payload
         val result = CryptoUtils.decryptBytes(encrypted, password)
         assertTrue("Decryption must succeed with correct password", result is CryptoUtils.DecryptResult.Success)
 
@@ -39,6 +40,27 @@ class CryptoUtilsTest {
         assertEquals(filename, success.originalFilename)
         assertArrayEquals(plainBytes, success.plainBytes)
         assertEquals(plainText, String(success.plainBytes, StandardCharsets.UTF_8))
+    }
+
+    @Test
+    fun testV2RoundTripAndCompatibility() {
+        val plainText = "RePix V2 Format Roundtrip"
+        val plainBytes = plainText.toByteArray(StandardCharsets.UTF_8)
+        val password = "V2Password!2026".toCharArray()
+        val filename = "v2_test.png"
+
+        val encrypted = CryptoUtils.encryptBytes(plainBytes, password, filename, version = CryptoUtils.VERSION_2)
+
+        val header = CryptoUtils.inspectHeader(encrypted.inputStream())
+        assertEquals(CryptoUtils.VERSION_2, header?.version)
+        assertEquals(filename, header?.originalFilename)
+        assertFalse(header?.isFilenameProtected == true)
+
+        val result = CryptoUtils.decryptBytes(encrypted, password)
+        assertTrue(result is CryptoUtils.DecryptResult.Success)
+        val success = result as CryptoUtils.DecryptResult.Success
+        assertEquals(filename, success.originalFilename)
+        assertArrayEquals(plainBytes, success.plainBytes)
     }
 
     @Test
@@ -74,7 +96,7 @@ class CryptoUtilsTest {
         val password = "StrongPassword#2026".toCharArray()
         val filename = "financial_report.pdf"
 
-        val encrypted = CryptoUtils.encryptBytes(plainBytes, password, filename)
+        val encrypted = CryptoUtils.encryptBytes(plainBytes, password, filename, version = CryptoUtils.VERSION_2)
 
         // Tamper with one byte in the header filename (e.g. change 'f' to 'g')
         // In V2, header starts with: Magic(4) + Ver(1) + Algo(1) + Iters(4) + Salt(16) + IV(12) + NameLen(2)
@@ -86,6 +108,25 @@ class CryptoUtilsTest {
         val result = CryptoUtils.decryptBytes(tampered, password)
         assertTrue(
             "Tampering with header metadata must cause GCM AAD verification failure",
+            result is CryptoUtils.DecryptResult.WrongPasswordOrCorrupted
+        )
+    }
+
+    @Test
+    fun testV3HeaderTamperingIsRejectedByAad() {
+        val plainBytes = "Super confidential V3 data".toByteArray(StandardCharsets.UTF_8)
+        val password = "StrongPassword#2026".toCharArray()
+        val filename = "financial_report_v3.pdf"
+
+        val encrypted = CryptoUtils.encryptBytes(plainBytes, password, filename, version = CryptoUtils.VERSION_3)
+
+        // In V3, tamper with salt at byte 15
+        val tampered = encrypted.clone()
+        tampered[15] = (tampered[15].toInt() xor 0x01).toByte()
+
+        val result = CryptoUtils.decryptBytes(tampered, password)
+        assertTrue(
+            "Tampering with V3 header metadata must cause GCM AAD verification failure",
             result is CryptoUtils.DecryptResult.WrongPasswordOrCorrupted
         )
     }

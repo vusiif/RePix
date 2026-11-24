@@ -214,35 +214,17 @@ object MirageTankBridge {
      * 幻影坦克关键：必须以 PNG 无损格式保存，严禁使用 JPEG 压缩破坏 Alpha 通道
      */
     fun saveMiragePng(context: Context, bitmap: Bitmap): Boolean {
-        val appName = context.getString(R.string.app_name)
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val fileName = "Mirage_${timeStamp}.png"
 
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/$appName")
-                }
-                val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                } ?: return false
-            } else {
-                val saveDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), appName)
-                if (!saveDir.exists()) saveDir.mkdirs()
-                val outFile = File(saveDir, fileName)
-                FileOutputStream(outFile).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                }
-                FileUtils.notifyMediaScanner(context, outFile, "image/png")
-            }
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
+        val result = MediaStoreOutputWriter.writeImage(
+            context = context,
+            fileName = fileName,
+            mimeType = "image/png"
+        ) { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
+        return result is MediaStoreOutputWriter.OutputResult.Success
     }
 
     private fun Bitmap.ensureArgb8888(): Bitmap {

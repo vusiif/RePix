@@ -19,6 +19,7 @@ import com.example.picencrypt.utils.ExifUtils
 import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.ImageMetrics
 import com.example.picencrypt.utils.ImageMetricsHelper
+import com.example.picencrypt.utils.MediaStoreOutputWriter
 import com.example.picencrypt.utils.ImageScramble.Image
 import com.example.picencrypt.utils.ImageScramble.ProcessType
 import com.example.picencrypt.utils.NativeImageScramble
@@ -397,44 +398,41 @@ class MyImage(
             "PicEncrypt_${dateTime + s}.${format.extension}"
         }
         val appName = appContext.getString(R.string.app_name)
-        val saveDir = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-            appName
-        )
 
         return try {
             val currentBmp = bitmap
             val compressFormat = format.getCompressFormat(quality)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, imageName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, format.mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/$appName")
-                }
-                val insertUri = appContext.contentResolver.insert(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    contentValues
-                ) ?: return SaveResult.Failure(appContext.getString(R.string.save_failed_mediastore))
+            val result = MediaStoreOutputWriter.writeImage(
+                context = appContext,
+                fileName = imageName,
+                mimeType = format.mimeType
+            ) { out ->
+                val ok = currentBmp.compress(compressFormat, quality, out)
+                out.flush()
+                ok
+            }
 
-                val written = appContext.contentResolver.openOutputStream(insertUri)?.use { out ->
-                    currentBmp.compress(compressFormat, quality, out)
-                } ?: false
-
-                if (written) SaveResult.Success else SaveResult.Failure(appContext.getString(R.string.save_failed_io))
-            } else {
-                if (!saveDir.exists() && !saveDir.mkdirs()) {
-                    return SaveResult.Failure(appContext.getString(R.string.save_failed_dir))
+            when (result) {
+                is MediaStoreOutputWriter.OutputResult.Success -> {
+                    if (stripExif) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            ExifUtils.stripExifUri(appContext, result.uri)
+                        } else {
+                            val saveDir = File(
+                                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                                appName
+                            )
+                            val targetFile = File(saveDir, imageName)
+                            if (targetFile.exists()) {
+                                ExifUtils.stripExifFile(targetFile)
+                            }
+                        }
+                    }
+                    SaveResult.Success
                 }
-                val filePath = File(saveDir, imageName)
-                FileOutputStream(filePath).use { out ->
-                    currentBmp.compress(compressFormat, quality, out)
-                    out.flush()
+                is MediaStoreOutputWriter.OutputResult.Failure -> {
+                    SaveResult.Failure(result.message, result.throwable)
                 }
-                if (stripExif) {
-                    ExifUtils.stripExifFile(filePath)
-                }
-                FileUtils.notifyMediaScanner(appContext, filePath, format.mimeType)
-                SaveResult.Success
             }
         } catch (e: SecurityException) {
             SaveResult.Failure(appContext.getString(R.string.save_failed_permission), e)

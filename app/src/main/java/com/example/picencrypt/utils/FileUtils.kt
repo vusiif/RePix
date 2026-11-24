@@ -66,8 +66,83 @@ object FileUtils {
         return name
     }
 
+    /**
+     * Sanitizes raw filenames to prevent path traversal, control character injection,
+     * reserved name collision, and filesystem length limits.
+     */
+    fun sanitizeFilename(rawFilename: String, fallback: String = "file"): String {
+        if (rawFilename.isBlank()) return fallback
+
+        // 1. Strip any directory components (both / and \)
+        var name = rawFilename.substringAfterLast('/').substringAfterLast('\\').trim()
+
+        // 2. Remove control characters (0x00..0x1F, 0x7F)
+        name = name.replace(Regex("[\\x00-\\x1F\\x7F]"), "")
+
+        // 3. Remove illegal filesystem characters : * ? " < > |
+        name = name.replace(Regex("[:*?\"<>|]"), "_")
+
+        // 4. Remove leading and trailing dots and spaces
+        name = name.trimStart('.', ' ')
+        name = name.trimEnd('.', ' ')
+
+        // 5. Prevent Windows / FAT reserved device names
+        val baseName = name.substringBefore('.')
+        val reserved = setOf(
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        )
+        if (reserved.contains(baseName.uppercase(Locale.US))) {
+            name = "safe_$name"
+        }
+
+        // 6. Enforce max length (128 chars), preserving extension if present
+        if (name.length > 128) {
+            val dotIndex = name.lastIndexOf('.')
+            if (dotIndex in 1 until name.length - 1 && name.length - dotIndex <= 16) {
+                val ext = name.substring(dotIndex)
+                val base = name.substring(0, 128 - ext.length)
+                name = base + ext
+            } else {
+                name = name.take(128)
+            }
+        }
+
+        return if (name.isBlank()) fallback else name
+    }
+
+    /**
+     * Inspects a stego image from a Uri, utilizing ParcelFileDescriptor for O(1) random access
+     * when supported (SAF, Downloads, MediaStore), with safe stream fallback.
+     */
+    fun inspectStegoUri(context: Context, stegoUri: Uri): SteganographyHelper.StegoInspection {
+        val totalSize = getUriFileSize(context, stegoUri)
+
+        // 1. Try ParcelFileDescriptor for direct seekable FileChannel
+        try {
+            context.contentResolver.openFileDescriptor(stegoUri, "r")?.use { pfd ->
+                val size = if (pfd.statSize > 0L) pfd.statSize else totalSize
+                FileInputStream(pfd.fileDescriptor).use { fis ->
+                    val inspection = SteganographyHelper.detectArchiveFromStream(fis, size)
+                    if (inspection.hasArchive) {
+                        return inspection
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. Stream fallback
+        return try {
+            context.contentResolver.openInputStream(stegoUri)?.use { stream ->
+                SteganographyHelper.detectArchiveFromStream(stream, totalSize)
+            } ?: SteganographyHelper.StegoInspection(hasArchive = false, totalSize = totalSize)
+        } catch (e: Exception) {
+            SteganographyHelper.StegoInspection(hasArchive = false, totalSize = totalSize)
+        }
+    }
+
     fun saveStegoImage(context: Context, coverUri: Uri, archiveUri: Uri): Boolean {
-        val appName = context.getString(R.string.app_name)
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val coverName = getUriFilename(context, coverUri)
         val isJpg = coverName.endsWith(".jpg", ignoreCase = true) || coverName.endsWith(".jpeg", ignoreCase = true)
@@ -75,52 +150,22 @@ object FileUtils {
         val mimeType = if (isJpg) "image/jpeg" else "image/png"
         val fileName = "Stego_${timeStamp}.$ext"
 
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/$appName")
+        val result = MediaStoreOutputWriter.writeImage(
+            context = context,
+            fileName = fileName,
+            mimeType = mimeType
+        ) { out ->
+            context.contentResolver.openInputStream(coverUri)?.use { cIn ->
+                context.contentResolver.openInputStream(archiveUri)?.use { aIn ->
+                    SteganographyHelper.createStegoImage(cIn, aIn, out) > 0L
                 }
-                val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    context.contentResolver.openInputStream(coverUri)?.use { cIn ->
-                        context.contentResolver.openInputStream(archiveUri)?.use { aIn ->
-                            SteganographyHelper.createStegoImage(cIn, aIn, out)
-                        }
-                    }
-                } ?: return false
-            } else {
-                val saveDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), appName)
-                if (!saveDir.exists()) saveDir.mkdirs()
-                val outFile = File(saveDir, fileName)
-                FileOutputStream(outFile).use { out ->
-                    context.contentResolver.openInputStream(coverUri)?.use { cIn ->
-                        context.contentResolver.openInputStream(archiveUri)?.use { aIn ->
-                            SteganographyHelper.createStegoImage(cIn, aIn, out)
-                        }
-                    }
-                }
-                notifyMediaScanner(context, outFile, mimeType)
-            }
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
+            } ?: false
         }
+        return result is MediaStoreOutputWriter.OutputResult.Success
     }
 
     fun extractArchiveFromStego(context: Context, stegoUri: Uri): String? {
-        val totalSize = getUriFileSize(context, stegoUri)
-        val inspection = try {
-            context.contentResolver.openInputStream(stegoUri)?.use { stream ->
-                SteganographyHelper.detectArchiveFromStream(stream, totalSize)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        } ?: return null
-
+        val inspection = inspectStegoUri(context, stegoUri)
         if (!inspection.hasArchive || inspection.offset <= 0L) {
             return null
         }
@@ -130,15 +175,25 @@ object FileUtils {
         val outFileName = "Extracted_${timeStamp}.$ext"
 
         val success = writeStreamToDownload(context, outFileName) { outStream ->
-            context.contentResolver.openInputStream(stegoUri)?.use { inStream ->
+            val streamBlock: (InputStream) -> Boolean = { inStream ->
                 SteganographyHelper.extractArchiveStream(
-                    inStream,
-                    outStream,
+                    input = inStream,
+                    output = outStream,
                     offset = inspection.offset,
                     expectedLength = if (inspection.isV2) inspection.archiveSize else -1L,
                     expectedSha256 = inspection.sha256
                 )
-            } ?: false
+            }
+
+            try {
+                context.contentResolver.openFileDescriptor(stegoUri, "r")?.use { pfd ->
+                    FileInputStream(pfd.fileDescriptor).use(streamBlock)
+                } ?: run {
+                    context.contentResolver.openInputStream(stegoUri)?.use(streamBlock) ?: false
+                }
+            } catch (_: Exception) {
+                context.contentResolver.openInputStream(stegoUri)?.use(streamBlock) ?: false
+            }
         }
 
         return if (success) outFileName else null
@@ -172,57 +227,19 @@ object FileUtils {
 
     /**
      * 以流方式直接向系统公共 Download/RePix 目录写出数据，
-     * 写入失败或抛出异常时自动回滚清理不完整产物。
+     * 利用 MediaStoreOutputWriter 实现事务性写入与 IS_PENDING 失败回滚清理。
      */
     fun writeStreamToDownload(
         context: Context,
         fileName: String,
         writeBlock: (OutputStream) -> Boolean
     ): Boolean {
-        val appName = context.getString(R.string.app_name)
-        var outputUri: Uri? = null
-        var outputFile: File? = null
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/$appName")
-                }
-                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
-                outputUri = uri
-                val success = context.contentResolver.openOutputStream(uri)?.use { out ->
-                    writeBlock(out)
-                } ?: false
-                if (!success) {
-                    try { context.contentResolver.delete(uri, null, null) } catch (_: Exception) {}
-                }
-                success
-            } else {
-                val saveDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), appName)
-                if (!saveDir.exists()) saveDir.mkdirs()
-                val outFile = File(saveDir, fileName)
-                outputFile = outFile
-                val success = FileOutputStream(outFile).use { out ->
-                    writeBlock(out)
-                }
-                if (!success && outFile.exists()) {
-                    try { outFile.delete() } catch (_: Exception) {}
-                }
-                if (success) {
-                    notifyMediaScanner(context, outFile, "application/octet-stream")
-                }
-                success
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && outputUri != null) {
-                try { context.contentResolver.delete(outputUri, null, null) } catch (_: Exception) {}
-            } else if (outputFile != null && outputFile.exists()) {
-                try { outputFile.delete() } catch (_: Exception) {}
-            }
-            false
-        }
+        val result = MediaStoreOutputWriter.writeDownload(
+            context = context,
+            fileName = fileName,
+            writer = writeBlock
+        )
+        return result is MediaStoreOutputWriter.OutputResult.Success
     }
 
     /**

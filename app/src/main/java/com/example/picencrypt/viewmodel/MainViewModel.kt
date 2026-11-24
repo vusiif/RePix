@@ -691,17 +691,10 @@ class MainViewModel : ViewModel() {
             stegoExtractJob = viewModelScope.launch(Dispatchers.IO) {
                 val thumb = FileUtils.loadThumbnail(context, uri, 240)
                 val totalSize = FileUtils.getUriFileSize(context, uri)
-                val inspection = try {
-                    context.contentResolver.openInputStream(uri)?.use { stream ->
-                        SteganographyHelper.detectArchiveFromStream(stream, totalSize)
-                    } ?: SteganographyHelper.StegoInspection(hasArchive = false, totalSize = totalSize)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    SteganographyHelper.StegoInspection(hasArchive = false, totalSize = totalSize)
-                }
+                val inspection = FileUtils.inspectStegoUri(context, uri)
                 withContext(Dispatchers.Main) {
                     stegoExtractThumbnail = thumb
-                    stegoExtractFileSize = totalSize
+                    stegoExtractFileSize = if (totalSize > 0L) totalSize else inspection.totalSize
                     stegoInspection = inspection
                     isStegoInspecting = false
                 }
@@ -950,7 +943,7 @@ class MainViewModel : ViewModel() {
         isSafeProcessing = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val origName = safeSourceFileName.ifEmpty { "file" }
+                val origName = FileUtils.sanitizeFilename(safeSourceFileName.ifEmpty { "file" }, "file")
                 val outName = "${origName}.rpx"
                 val plainLength = safeSourceFileSize.coerceAtLeast(0L)
 
@@ -1008,7 +1001,7 @@ class MainViewModel : ViewModel() {
 
                 when (decryptResult) {
                     is CryptoUtils.DecryptResult.Success -> {
-                        val outName = decryptResult.originalFilename.ifEmpty { "decrypted_file" }
+                        val outName = FileUtils.sanitizeFilename(decryptResult.originalFilename, "decrypted_file")
                         val saved = FileInputStream(tempFile).use { tempIn ->
                             FileUtils.saveStreamToDownload(context, outName, tempIn)
                         }

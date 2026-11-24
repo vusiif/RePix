@@ -287,4 +287,66 @@ class SteganographyHelperTest {
         // Skipping more than remaining should return false
         assertFalse(SteganographyHelper.skipFully(inStream, 500))
     }
+
+    @Test
+    fun testArchiveTypeSniffingUnit() {
+        val zipHeader = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0x00, 0x00)
+        val rar4Header = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00)
+        val rar5Header = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00)
+        val sevenZHeader = byteArrayOf(0x37, 0x7A, 0xBC.toByte(), 0xAF.toByte(), 0x27, 0x1C)
+        val unknownHeader = byteArrayOf(0x01, 0x02, 0x03, 0x04)
+
+        assertEquals(SteganographyHelper.ArchiveType.ZIP, SteganographyHelper.sniffArchiveType(zipHeader))
+        assertEquals(SteganographyHelper.ArchiveType.RAR, SteganographyHelper.sniffArchiveType(rar4Header))
+        assertEquals(SteganographyHelper.ArchiveType.RAR, SteganographyHelper.sniffArchiveType(rar5Header))
+        assertEquals(SteganographyHelper.ArchiveType.SEVEN_Z, SteganographyHelper.sniffArchiveType(sevenZHeader))
+        assertEquals(SteganographyHelper.ArchiveType.UNKNOWN, SteganographyHelper.sniffArchiveType(unknownHeader))
+    }
+
+    @Test
+    fun testAutoSniffArchiveTypeWithoutExplicitParam() {
+        val imageFile = tempFolder.newFile("auto_sniff_cover.jpg")
+        FileOutputStream(imageFile).use { it.write(ByteArray(512) { 0xFF.toByte() }) }
+
+        // 1. Test RAR auto-sniffing
+        val rarFile = tempFolder.newFile("auto_sniff.rar")
+        val rarBytes = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00, 0xAA.toByte(), 0xBB.toByte())
+        FileOutputStream(rarFile).use { it.write(rarBytes) }
+
+        val stegoRarFile = tempFolder.newFile("stego_auto_rar.jpg")
+        // Note: archiveType parameter omitted, should automatically sniff RAR!
+        SteganographyHelper.createStegoImage(imageFile, rarFile, stegoRarFile, enableV2 = true)
+
+        val rarDetection = SteganographyHelper.detectArchiveOffset(stegoRarFile)
+        assertNotNull(rarDetection)
+        assertEquals("Should auto-sniff RAR type", SteganographyHelper.ArchiveType.RAR, rarDetection!!.type)
+        assertTrue(rarDetection.isV2)
+
+        // 2. Test 7Z auto-sniffing
+        val sevenZFile = tempFolder.newFile("auto_sniff.7z")
+        val sevenZBytes = byteArrayOf(0x37, 0x7A, 0xBC.toByte(), 0xAF.toByte(), 0x27, 0x1C, 0x11, 0x22)
+        FileOutputStream(sevenZFile).use { it.write(sevenZBytes) }
+
+        val stego7zFile = tempFolder.newFile("stego_auto_7z.jpg")
+        // archiveType parameter omitted, should automatically sniff 7Z!
+        SteganographyHelper.createStegoImage(imageFile, sevenZFile, stego7zFile, enableV2 = true)
+
+        val sevenZDetection = SteganographyHelper.detectArchiveOffset(stego7zFile)
+        assertNotNull(sevenZDetection)
+        assertEquals("Should auto-sniff 7Z type", SteganographyHelper.ArchiveType.SEVEN_Z, sevenZDetection!!.type)
+        assertTrue(sevenZDetection.isV2)
+
+        // 3. Test Unknown auto-sniffing
+        val unknownFile = tempFolder.newFile("auto_sniff.bin")
+        val unknownBytes = byteArrayOf(0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte(), 0x00, 0x01)
+        FileOutputStream(unknownFile).use { it.write(unknownBytes) }
+
+        val stegoUnknownFile = tempFolder.newFile("stego_auto_unknown.jpg")
+        SteganographyHelper.createStegoImage(imageFile, unknownFile, stegoUnknownFile, enableV2 = true)
+
+        val unknownDetection = SteganographyHelper.detectArchiveOffset(stegoUnknownFile)
+        assertNotNull(unknownDetection)
+        assertEquals("Should auto-sniff UNKNOWN type", SteganographyHelper.ArchiveType.UNKNOWN, unknownDetection!!.type)
+        assertTrue(unknownDetection.isV2)
+    }
 }

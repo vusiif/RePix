@@ -283,8 +283,13 @@ fun SafeScreen(
                                     .padding(10.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
+                                val displayName = if (inspected.originalFilename.isBlank()) {
+                                    stringResource(id = R.string.safe_filename_protected)
+                                } else {
+                                    inspected.originalFilename
+                                }
                                 Text(
-                                    text = "${stringResource(id = R.string.safe_inspect_orig_name)}: ${inspected.originalFilename}",
+                                    text = "${stringResource(id = R.string.safe_inspect_orig_name)}: $displayName",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
                                 )

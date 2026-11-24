@@ -102,8 +102,21 @@ object SteganographyHelper {
     private val PNG_MAGIC = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
 
     /**
+     * Inspects magic headers to detect archive type (ZIP, RAR, 7Z, or UNKNOWN).
+     */
+    fun sniffArchiveType(headerBytes: ByteArray): ArchiveType {
+        return when {
+            matches(headerBytes, 0, ZIP_MAGIC) -> ArchiveType.ZIP
+            matches(headerBytes, 0, RAR4_MAGIC) || matches(headerBytes, 0, RAR5_MAGIC) -> ArchiveType.RAR
+            matches(headerBytes, 0, SEVEN_Z_MAGIC) -> ArchiveType.SEVEN_Z
+            else -> ArchiveType.UNKNOWN
+        }
+    }
+
+    /**
      * 将压缩包直接追加到图片文件的末尾（生成“图种”文件）
      * @param enableV2 启用 V2 结构化尾部索引与 SHA-256 完整性摘要
+     * @param archiveType 压缩包格式，若为 null 则自动嗅探文件头识别 ZIP / RAR / 7Z
      */
     fun createStegoImage(
         imageInput: InputStream,
@@ -111,8 +124,29 @@ object SteganographyHelper {
         output: OutputStream,
         bufferSize: Int = 64 * 1024,
         enableV2: Boolean = true,
-        archiveType: ArchiveType = ArchiveType.ZIP
+        archiveType: ArchiveType? = null
     ): Long {
+        val archStream = if (archiveInput.markSupported()) {
+            archiveInput
+        } else {
+            java.io.BufferedInputStream(archiveInput, bufferSize.coerceAtLeast(64))
+        }
+
+        val resolvedArchiveType = if (archiveType != null) {
+            archiveType
+        } else {
+            archStream.mark(32)
+            val sniffHeader = ByteArray(16)
+            var readSniff = 0
+            while (readSniff < sniffHeader.size) {
+                val r = archStream.read(sniffHeader, readSniff, sniffHeader.size - readSniff)
+                if (r == -1) break
+                readSniff += r
+            }
+            archStream.reset()
+            if (readSniff > 0) sniffArchiveType(sniffHeader.copyOf(readSniff)) else ArchiveType.UNKNOWN
+        }
+
         if (enableV2) {
             val digest = MessageDigest.getInstance("SHA-256")
             var currentOffset = 0L
@@ -131,7 +165,7 @@ object SteganographyHelper {
             var archiveLength = 0L
 
             // 2. Write archive payload while calculating SHA-256
-            archiveInput.use { arch ->
+            archStream.use { arch ->
                 var read: Int
                 while (arch.read(buffer).also { read = it } != -1) {
                     output.write(buffer, 0, read)
@@ -146,7 +180,7 @@ object SteganographyHelper {
             val trailer = ByteBuffer.allocate(TRAILER_V2_SIZE).apply {
                 putLong(archiveOffset)
                 putLong(archiveLength)
-                putInt(archiveType.code)
+                putInt(resolvedArchiveType.code)
                 put(sha256)
                 putShort(2.toShort()) // version 2
                 putShort(0.toShort()) // flags
@@ -170,7 +204,7 @@ object SteganographyHelper {
                 }
             }
 
-            archiveInput.use { arch ->
+            archStream.use { arch ->
                 var read: Int
                 while (arch.read(buffer).also { read = it } != -1) {
                     output.write(buffer, 0, read)
@@ -191,7 +225,7 @@ object SteganographyHelper {
         archiveFile: File,
         outputFile: File,
         enableV2: Boolean = true,
-        archiveType: ArchiveType = ArchiveType.ZIP
+        archiveType: ArchiveType? = null
     ): Long {
         return createStegoImage(
             FileInputStream(imageFile),

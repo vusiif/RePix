@@ -3,6 +3,7 @@ package com.example.picencrypt.utils
 import android.content.Context
 import android.media.ExifInterface
 import android.net.Uri
+import android.os.Build
 import java.io.File
 import java.io.InputStream
 import java.util.Locale
@@ -128,6 +129,26 @@ object ExifUtils {
             stripSensitiveAttributes(exif)
             exif.saveAttributes()
             true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Physically strips all sensitive EXIF privacy metadata from a target URI in MediaStore.
+     */
+    fun stripExifUri(context: Context, uri: Uri): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                context.contentResolver.openFileDescriptor(uri, "rw")?.use { pfd ->
+                    val exif = ExifInterface(pfd.fileDescriptor)
+                    stripSensitiveAttributes(exif)
+                    exif.saveAttributes()
+                    true
+                } ?: false
+            } else {
+                false
+            }
         } catch (_: Exception) {
             false
         }
