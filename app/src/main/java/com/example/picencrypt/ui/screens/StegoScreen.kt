@@ -54,10 +54,22 @@ import com.example.picencrypt.utils.performHapticIf
 import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.SteganographyHelper
 import com.example.picencrypt.viewmodel.MainViewModel
+import com.example.picencrypt.viewmodel.StegoViewModel
 
 @Composable
 fun StegoScreen(
     viewModel: MainViewModel,
+    modifier: Modifier = Modifier
+) {
+    StegoScreen(
+        viewModel = viewModel.stego,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun StegoScreen(
+    viewModel: StegoViewModel,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current

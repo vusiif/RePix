@@ -46,11 +46,25 @@ import com.example.picencrypt.model.AppThemeMode
 import com.example.picencrypt.model.ImageExportFormat
 import com.example.picencrypt.utils.performHapticIf
 import com.example.picencrypt.viewmodel.MainViewModel
+import com.example.picencrypt.viewmodel.ScrambleViewModel
+
+@Composable
+fun MethodAndKeySettings(
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier,
+    isExpandedAllowed: Boolean = true
+) {
+    MethodAndKeySettings(
+        viewModel = viewModel.scramble,
+        modifier = modifier,
+        isExpandedAllowed = isExpandedAllowed
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MethodAndKeySettings(
-    viewModel: MainViewModel,
+    viewModel: ScrambleViewModel,
     modifier: Modifier = Modifier,
     isExpandedAllowed: Boolean = true
 ) {

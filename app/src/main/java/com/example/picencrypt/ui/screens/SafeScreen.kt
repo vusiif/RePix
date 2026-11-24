@@ -65,11 +65,23 @@ import com.example.picencrypt.utils.PasswordStrength
 import com.example.picencrypt.utils.PasswordStrengthEvaluator
 import androidx.compose.ui.graphics.Color
 import com.example.picencrypt.viewmodel.MainViewModel
+import com.example.picencrypt.viewmodel.SafeViewModel
+
+@Composable
+fun SafeScreen(
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier
+) {
+    SafeScreen(
+        viewModel = viewModel.safe,
+        modifier = modifier
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SafeScreen(
-    viewModel: MainViewModel,
+    viewModel: SafeViewModel,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current

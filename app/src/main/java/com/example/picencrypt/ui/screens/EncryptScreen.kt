@@ -86,12 +86,24 @@ import com.example.picencrypt.utils.BatchMetricsHelper
 import com.example.picencrypt.utils.performHapticIf
 import com.example.picencrypt.utils.ImageScramble.ProcessType
 import com.example.picencrypt.viewmodel.MainViewModel
+import com.example.picencrypt.viewmodel.ScrambleViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.round
 
 @Composable
 fun EncryptScreen(
     viewModel: MainViewModel,
+    modifier: Modifier = Modifier
+) {
+    EncryptScreen(
+        viewModel = viewModel.scramble,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun EncryptScreen(
+    viewModel: ScrambleViewModel,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current

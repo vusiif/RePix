@@ -2,50 +2,48 @@ package com.example.picencrypt.viewmodel
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import com.example.picencrypt.data.PreferencesRepository
 import com.example.picencrypt.model.Algorithm
 import com.example.picencrypt.model.AppThemeMode
 import com.example.picencrypt.model.ImageExportFormat
 import com.example.picencrypt.model.MyImage
-import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.CryptoUtils
-import com.example.picencrypt.utils.SteganographyHelper
-import com.example.picencrypt.utils.ImageScramble.ProcessType
-import com.example.picencrypt.utils.MirageTankBridge
-import com.example.picencrypt.utils.MiragePresetGenerator
 import com.example.picencrypt.utils.ExportFilenameGenerator
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileNotFoundException
-import com.example.picencrypt.data.PreferencesRepository
-import java.io.FileOutputStream
+import com.example.picencrypt.utils.ImageScramble.ProcessType
+import com.example.picencrypt.utils.MiragePresetGenerator
+import com.example.picencrypt.utils.MirageTankBridge
+import com.example.picencrypt.utils.SteganographyHelper
 
+/**
+ * Top-level application coordinator ViewModel.
+ * Manages global navigation, top-level dialog states, and persistent app preferences,
+ * while delegating feature-specific domain logic to modular feature ViewModels:
+ * - [scramble]: [ScrambleViewModel] (Tab 0)
+ * - [stego]: [StegoViewModel] (Tab 1)
+ * - [mirage]: [MirageViewModel] (Tab 2)
+ * - [safe]: [SafeViewModel] (Tab 3)
+ */
 class MainViewModel(
+    val scramble: ScrambleViewModel = ScrambleViewModel(),
+    val stego: StegoViewModel = StegoViewModel(),
+    val mirage: MirageViewModel = MirageViewModel(),
+    val safe: SafeViewModel = SafeViewModel(),
     private val preferencesRepository: PreferencesRepository = PreferencesRepository.getInstance()
 ) : ViewModel() {
 
-    // ---------------- 导航与弹窗全局状态 ----------------
+    // ---------------- 导航与全局弹窗状态 ----------------
     var currentTab by mutableIntStateOf(0)
     var isShowInfo by mutableStateOf(false)
     var isShowRequestWritePermissionDialog by mutableStateOf(false)
     var isShowMethodAndKeySettingOnTopLayer by mutableStateOf(false)
 
-    // ---------------- 全局偏好、主题外观与触觉反馈设置 ----------------
+    // ---------------- 全局偏好与主题外观设置 ----------------
     var isHapticFeedbackEnabled by mutableStateOf(true)
     var appThemeMode by mutableStateOf(AppThemeMode.FOLLOW_SYSTEM)
     var isStripExifOnExport by mutableStateOf(true)
@@ -111,448 +109,71 @@ class MainViewModel(
         preferencesRepository.setExportCustomPrefix(prefix)
     }
 
-    // ---------------- Tab 0: 图片混淆状态 ----------------
-    val images = mutableStateListOf<MyImage>()
-    var selectedAlgorithm by mutableStateOf(Algorithm.TOMATO)
-    var keyString by mutableStateOf("1")
-    var isCompatMode by mutableStateOf(false)
-    var isDropdownMenuExpanded by mutableStateOf(false)
+    // =========================================================================
+    // 兼容层代理：Tab 0 图片混淆 (ScrambleViewModel)
+    // =========================================================================
+    val images get() = scramble.images
 
-    var progress by mutableFloatStateOf(0f)
-    var isShowProgress by mutableStateOf(false)
-    var newImageUriCount by mutableIntStateOf(0)
-    var lastProcessType by mutableStateOf<ProcessType?>(null)
-    val failedProcessImageIds = mutableStateListOf<String>()
-    val failedSaveImageIds = mutableStateListOf<String>()
+    var selectedAlgorithm: Algorithm
+        get() = scramble.selectedAlgorithm
+        set(value) { scramble.selectedAlgorithm = value }
 
-    // ---------------- Tab 1: 图种隐写状态 ----------------
-    var stegoMode by mutableIntStateOf(0)
-    var stegoCoverUri by mutableStateOf<Uri?>(null)
-    var stegoArchiveUri by mutableStateOf<Uri?>(null)
-    var stegoCoverThumbnail by mutableStateOf<Bitmap?>(null)
-    var stegoCoverFileSize by mutableLongStateOf(0L)
-    var stegoArchiveFileSize by mutableLongStateOf(0L)
+    var keyString: String
+        get() = scramble.keyString
+        set(value) { scramble.keyString = value }
 
-    var stegoExtractTargetUri by mutableStateOf<Uri?>(null)
-    var stegoExtractThumbnail by mutableStateOf<Bitmap?>(null)
-    var stegoExtractFileSize by mutableLongStateOf(0L)
-    var stegoInspection by mutableStateOf<SteganographyHelper.StegoInspection?>(null)
-    var isStegoInspecting by mutableStateOf(false)
-    var isStegoProcessing by mutableStateOf(false)
+    var isCompatMode: Boolean
+        get() = scramble.isCompatMode
+        set(value) { scramble.isCompatMode = value }
 
-    // ---------------- Tab 2: 幻影坦克状态 ----------------
-    var mirageIsColoredMode by mutableStateOf(true)
-    var mirageScaleMode by mutableStateOf(MirageTankBridge.MirageScaleMode.FIT)
-    var mirageCoverUri by mutableStateOf<Uri?>(null)
-    var mirageHiddenUri by mutableStateOf<Uri?>(null)
-    var mirageCoverThumbnail by mutableStateOf<Bitmap?>(null)
-    var mirageHiddenThumbnail by mutableStateOf<Bitmap?>(null)
-    var miragePreviewBitmap by mutableStateOf<Bitmap?>(null)
-    var mirageBgMode by mutableIntStateOf(0) // 0: 白底, 1: 黑底, 2: 棋盘格
-    var isMirageProcessing by mutableStateOf(false)
-    var mirageCoverBrightness by mutableFloatStateOf(0f)
-    var mirageCoverContrast by mutableFloatStateOf(1f)
-    var mirageHiddenBrightness by mutableFloatStateOf(0f)
-    var mirageHiddenContrast by mutableFloatStateOf(1f)
-    var isMirageAdjustExpanded by mutableStateOf(false)
+    var isDropdownMenuExpanded: Boolean
+        get() = scramble.isDropdownMenuExpanded
+        set(value) { scramble.isDropdownMenuExpanded = value }
 
-    fun resetMirageAdjustments() {
-        mirageCoverBrightness = 0f
-        mirageCoverContrast = 1f
-        mirageHiddenBrightness = 0f
-        mirageHiddenContrast = 1f
-        miragePreviewBitmap = null
-    }
+    var progress: Float
+        get() = scramble.progress
+        set(value) { scramble.progress = value }
 
-    fun autoOptimizeMirageParams(context: Context? = null): Boolean {
-        val cThumb = mirageCoverThumbnail
-        val hThumb = mirageHiddenThumbnail
-        if (cThumb == null || hThumb == null) return false
+    var isShowProgress: Boolean
+        get() = scramble.isShowProgress
+        set(value) { scramble.isShowProgress = value }
 
-        val params = com.example.picencrypt.utils.MirageAutoOptimizer.optimize(cThumb, hThumb)
-        mirageCoverBrightness = params.coverBrightness
-        mirageCoverContrast = params.coverContrast
-        mirageHiddenBrightness = params.hiddenBrightness
-        mirageHiddenContrast = params.hiddenContrast
-        miragePreviewBitmap = null
+    var newImageUriCount: Int
+        get() = scramble.newImageUriCount
+        set(value) { scramble.newImageUriCount = value }
 
-        if (context != null) {
-            generateMiragePreview(context)
-        }
-        return true
-    }
+    var lastProcessType: ProcessType?
+        get() = scramble.lastProcessType
+        set(value) { scramble.lastProcessType = value }
 
-    // ---------------- Tab 3: 安全保险箱状态 (AES-256-GCM) ----------------
-    var safeMode by mutableIntStateOf(0) // 0: 加密为 .rpx, 1: 解密 .rpx
-    var safePassword by mutableStateOf("")
-    var safeSourceUri by mutableStateOf<Uri?>(null)
-    var safeSourceFileName by mutableStateOf("")
-    var safeSourceFileSize by mutableLongStateOf(0L)
-    var safeRpxHeader by mutableStateOf<CryptoUtils.RpxHeader?>(null)
-    var isSafeProcessing by mutableStateOf(false)
+    val failedProcessImageIds get() = scramble.failedProcessImageIds
+    val failedSaveImageIds get() = scramble.failedSaveImageIds
 
-    // ---------------- 业务方法：图片混淆 ----------------
-
-    fun selectAlgorithm(algorithm: Algorithm) {
-        if (selectedAlgorithm != algorithm) {
-            if (algorithm == Algorithm.TOMATO) {
-                keyString = Algorithm.DEFAULT_TOMATO_KEY
-            } else if (selectedAlgorithm == Algorithm.TOMATO) {
-                keyString = Algorithm.DEFAULT_OTHER_KEY
-            }
-        }
-        selectedAlgorithm = algorithm
-        isDropdownMenuExpanded = false
-    }
-
-    fun addImages(uris: List<Uri>, context: Context, onComplete: () -> Unit = {}) {
-        if (uris.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            isShowProgress = true
-            progress = 0f
-            newImageUriCount = uris.size
-            val loaded = mutableListOf<MyImage>()
-            for (i in uris.indices) {
-                loaded.add(MyImage(uris[i], context))
-                progress = (i + 1).toFloat() / uris.size
-            }
-            withContext(Dispatchers.Main) {
-                images.addAll(loaded)
-                newImageUriCount = 0
-                isShowProgress = false
-                onComplete()
-            }
-        }
-    }
-
-    fun loadDemoSample(context: Context, onComplete: () -> Unit = {}) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val demoUri = com.example.picencrypt.utils.DemoImageGenerator.createDemoImageUri(context)
-            withContext(Dispatchers.Main) {
-                addImages(listOf(demoUri), context, onComplete)
-            }
-        }
-    }
-
-    fun removeImageAt(index: Int) {
-        if (index in images.indices) {
-            val removed = images.removeAt(index)
-            failedProcessImageIds.remove(removed.id)
-            failedSaveImageIds.remove(removed.id)
-        }
-    }
-
-    fun clearAllImages() {
-        images.clear()
-        failedProcessImageIds.clear()
-        failedSaveImageIds.clear()
-    }
-
-    private var batchProcessJob: Job? = null
-    private var batchSaveJob: Job? = null
-    private var stegoCoverJob: Job? = null
-    private var stegoArchiveJob: Job? = null
-    private var stegoExtractJob: Job? = null
-    private var mirageCoverJob: Job? = null
-    private var mirageHiddenJob: Job? = null
-    private var safeSourceJob: Job? = null
-
-    data class BatchSaveConfig(
-        val format: ImageExportFormat,
-        val quality: Int,
-        val stripExif: Boolean,
-        val filenamePattern: String,
-        val customPrefix: String,
-        val algorithmName: String
-    )
-
-    fun cancelCurrentBatchTask() {
-        batchProcessJob?.cancel()
-        batchSaveJob?.cancel()
-        isShowProgress = false
-    }
+    fun selectAlgorithm(algorithm: Algorithm) = scramble.selectAlgorithm(algorithm)
+    fun addImages(uris: List<Uri>, context: Context, onComplete: () -> Unit = {}) = scramble.addImages(uris, context, onComplete)
+    fun loadDemoSample(context: Context, onComplete: () -> Unit = {}) = scramble.loadDemoSample(context, onComplete)
+    fun removeImageAt(index: Int) = scramble.removeImageAt(index)
+    fun clearAllImages() = scramble.clearAllImages()
+    fun cancelCurrentBatchTask() = scramble.cancelCurrentBatchTask()
 
     fun processAllImages(
         processType: ProcessType,
         onFallbackToast: () -> Unit,
         onFailedToast: () -> Unit,
         onFinish: (isEncrypt: Boolean, successCount: Int, failCount: Int, durationMs: Long) -> Unit
-    ) {
-        if (images.isEmpty() || isShowProgress) return
-        lastProcessType = processType
-        failedProcessImageIds.clear()
-        val algoSnapshot = selectedAlgorithm
-        val keySnapshot = keyString
-        val compatSnapshot = isCompatMode
-        val typeSnapshot = processType
-        val startTime = System.currentTimeMillis()
-
-        batchProcessJob = viewModelScope.launch(Dispatchers.Default) {
-            isShowProgress = true
-            progress = 0f
-            // 集合与参数双重快照保护，避免遍历中参数修改引发混淆状态污染 (P1-2)
-            val snapshot = images.toList()
-            var successCount = 0
-            var failCount = 0
-            val failedIds = mutableListOf<String>()
-            for (i in snapshot.indices) {
-                if (!isActive) break
-                val item = snapshot[i]
-                var hadFallback = false
-                val success = item.process(
-                    algoSnapshot,
-                    typeSnapshot,
-                    keySnapshot,
-                    forceCompat = compatSnapshot,
-                    onFallback = { hadFallback = true }
-                )
-                if (success) {
-                    successCount++
-                } else {
-                    failCount++
-                    failedIds.add(item.id)
-                }
-                if (hadFallback) {
-                    withContext(Dispatchers.Main) { onFallbackToast() }
-                } else if (!success) {
-                    withContext(Dispatchers.Main) { onFailedToast() }
-                }
-                progress = (i + 1).toFloat() / snapshot.size
-            }
-            val durationMs = System.currentTimeMillis() - startTime
-            withContext(Dispatchers.Main) {
-                failedProcessImageIds.clear()
-                failedProcessImageIds.addAll(failedIds)
-                // 触发列表通知，确保 Compose 观察到元素属性变化
-                for (i in images.indices) {
-                    images[i] = images[i]
-                }
-                isShowProgress = false
-                onFinish(processType == ProcessType.ENCRYPT, successCount, failCount, durationMs)
-            }
-        }
-    }
+    ) = scramble.processAllImages(processType, onFallbackToast, onFailedToast, onFinish)
 
     fun retryFailedProcess(
         processType: ProcessType,
         onFallbackToast: () -> Unit,
         onFailedToast: () -> Unit,
         onFinish: (isEncrypt: Boolean, successCount: Int, failCount: Int, durationMs: Long) -> Unit
-    ) {
-        if (failedProcessImageIds.isEmpty() || isShowProgress) return
-        val targetIds = failedProcessImageIds.toSet()
-        val targetImages = images.filter { it.id in targetIds }
-        if (targetImages.isEmpty()) {
-            failedProcessImageIds.clear()
-            return
-        }
-        lastProcessType = processType
-        val algoSnapshot = selectedAlgorithm
-        val keySnapshot = keyString
-        val compatSnapshot = isCompatMode
-        val typeSnapshot = processType
-        val startTime = System.currentTimeMillis()
+    ) = scramble.retryFailedProcess(processType, onFallbackToast, onFailedToast, onFinish)
 
-        batchProcessJob = viewModelScope.launch(Dispatchers.Default) {
-            isShowProgress = true
-            progress = 0f
-            var successCount = 0
-            var failCount = 0
-            val newlySucceededIds = mutableListOf<String>()
-            for (i in targetImages.indices) {
-                if (!isActive) break
-                val item = targetImages[i]
-                var hadFallback = false
-                val success = item.process(
-                    algoSnapshot,
-                    typeSnapshot,
-                    keySnapshot,
-                    forceCompat = compatSnapshot,
-                    onFallback = { hadFallback = true }
-                )
-                if (success) {
-                    successCount++
-                    newlySucceededIds.add(item.id)
-                } else {
-                    failCount++
-                }
-                if (hadFallback) {
-                    withContext(Dispatchers.Main) { onFallbackToast() }
-                } else if (!success) {
-                    withContext(Dispatchers.Main) { onFailedToast() }
-                }
-                progress = (i + 1).toFloat() / targetImages.size
-            }
-            val durationMs = System.currentTimeMillis() - startTime
-            withContext(Dispatchers.Main) {
-                failedProcessImageIds.removeAll(newlySucceededIds)
-                for (i in images.indices) {
-                    images[i] = images[i]
-                }
-                isShowProgress = false
-                onFinish(processType == ProcessType.ENCRYPT, successCount, failCount, durationMs)
-            }
-        }
-    }
-
-    fun reloadAllImages(onFileNotFound: () -> Unit) {
-        if (images.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            isShowProgress = true
-            progress = 0f
-            val snapshot = images.toList()
-            for (i in snapshot.indices.reversed()) {
-                val item = snapshot[i]
-                try {
-                    item.reload()
-                } catch (e: FileNotFoundException) {
-                    withContext(Dispatchers.Main) {
-                        images.remove(item)
-                        onFileNotFound()
-                    }
-                }
-                progress = (snapshot.size - i).toFloat() / snapshot.size
-            }
-            withContext(Dispatchers.Main) {
-                for (i in images.indices) {
-                    images[i] = images[i]
-                }
-                isShowProgress = false
-            }
-        }
-    }
-
-    fun rotateAllImages() {
-        if (images.isEmpty()) return
-        viewModelScope.launch(Dispatchers.Default) {
-            isShowProgress = true
-            progress = 0f
-            val snapshot = images.toList()
-            for (i in snapshot.indices) {
-                snapshot[i].rotate(180f)
-                progress = (i + 1).toFloat() / snapshot.size
-            }
-            withContext(Dispatchers.Main) {
-                for (i in images.indices) {
-                    images[i] = images[i]
-                }
-                isShowProgress = false
-            }
-        }
-    }
-
-    fun saveAllImages(onComplete: (successCount: Int, failCount: Int, durationMs: Long) -> Unit) {
-        if (images.isEmpty() || isShowProgress) return
-        failedSaveImageIds.clear()
-        val startTime = System.currentTimeMillis()
-        val saveConfig = BatchSaveConfig(
-            format = exportFormat,
-            quality = exportQuality,
-            stripExif = isStripExifOnExport,
-            filenamePattern = exportFilenamePattern,
-            customPrefix = exportCustomPrefix,
-            algorithmName = selectedAlgorithm.name
-        )
-        batchSaveJob = viewModelScope.launch(Dispatchers.IO) {
-            isShowProgress = true
-            progress = 0f
-            val snapshot = images.toList()
-            var successCount = 0
-            var failCount = 0
-            val failedIds = mutableListOf<String>()
-            for (i in snapshot.indices) {
-                if (!isActive) break
-                val resolvedName = ExportFilenameGenerator.generateFilename(
-                    template = saveConfig.filenamePattern,
-                    prefix = saveConfig.customPrefix,
-                    originalFilename = snapshot[i].filename,
-                    index = i,
-                    algorithmName = saveConfig.algorithmName,
-                    extension = saveConfig.format.extension
-                )
-                val ok = snapshot[i].saveWithDetail(
-                    i,
-                    format = saveConfig.format,
-                    quality = saveConfig.quality,
-                    stripExif = saveConfig.stripExif,
-                    customFilename = resolvedName
-                ) is com.example.picencrypt.model.SaveResult.Success
-                if (ok) {
-                    successCount++
-                } else {
-                    failCount++
-                    failedIds.add(snapshot[i].id)
-                }
-                progress = (i + 1).toFloat() / snapshot.size
-            }
-            val durationMs = System.currentTimeMillis() - startTime
-            withContext(Dispatchers.Main) {
-                failedSaveImageIds.clear()
-                failedSaveImageIds.addAll(failedIds)
-                isShowProgress = false
-                onComplete(successCount, failCount, durationMs)
-            }
-        }
-    }
-
-    fun retryFailedSave(onComplete: (successCount: Int, failCount: Int, durationMs: Long) -> Unit) {
-        if (failedSaveImageIds.isEmpty() || isShowProgress) return
-        val targetIds = failedSaveImageIds.toSet()
-        val targetImages = images.filter { it.id in targetIds }
-        if (targetImages.isEmpty()) {
-            failedSaveImageIds.clear()
-            return
-        }
-        val startTime = System.currentTimeMillis()
-        val saveConfig = BatchSaveConfig(
-            format = exportFormat,
-            quality = exportQuality,
-            stripExif = isStripExifOnExport,
-            filenamePattern = exportFilenamePattern,
-            customPrefix = exportCustomPrefix,
-            algorithmName = selectedAlgorithm.name
-        )
-        batchSaveJob = viewModelScope.launch(Dispatchers.IO) {
-            isShowProgress = true
-            progress = 0f
-            var successCount = 0
-            var failCount = 0
-            val newlySucceededIds = mutableListOf<String>()
-            for (i in targetImages.indices) {
-                if (!isActive) break
-                val item = targetImages[i]
-                val originalIndex = images.indexOf(item).coerceAtLeast(i)
-                val resolvedName = ExportFilenameGenerator.generateFilename(
-                    template = saveConfig.filenamePattern,
-                    prefix = saveConfig.customPrefix,
-                    originalFilename = item.filename,
-                    index = originalIndex,
-                    algorithmName = saveConfig.algorithmName,
-                    extension = saveConfig.format.extension
-                )
-                val ok = item.saveWithDetail(
-                    originalIndex,
-                    format = saveConfig.format,
-                    quality = saveConfig.quality,
-                    stripExif = saveConfig.stripExif,
-                    customFilename = resolvedName
-                ) is com.example.picencrypt.model.SaveResult.Success
-                if (ok) {
-                    successCount++
-                    newlySucceededIds.add(item.id)
-                } else {
-                    failCount++
-                }
-                progress = (i + 1).toFloat() / targetImages.size
-            }
-            val durationMs = System.currentTimeMillis() - startTime
-            withContext(Dispatchers.Main) {
-                failedSaveImageIds.removeAll(newlySucceededIds)
-                isShowProgress = false
-                onComplete(successCount, failCount, durationMs)
-            }
-        }
-    }
+    fun reloadAllImages(onFileNotFound: () -> Unit) = scramble.reloadAllImages(onFileNotFound)
+    fun rotateAllImages() = scramble.rotateAllImages()
+    fun saveAllImages(onComplete: (successCount: Int, failCount: Int, durationMs: Long) -> Unit) = scramble.saveAllImages(onComplete)
+    fun retryFailedSave(onComplete: (successCount: Int, failCount: Int, durationMs: Long) -> Unit) = scramble.retryFailedSave(onComplete)
 
     fun processSingleImage(
         index: Int,
@@ -560,484 +181,172 @@ class MainViewModel(
         onFallbackToast: () -> Unit,
         onFailedToast: () -> Unit,
         onSuccess: ((durationMs: Long) -> Unit)? = null
-    ) {
-        if (index !in images.indices) return
-        val item = images[index]
-        val startTime = System.currentTimeMillis()
-        viewModelScope.launch(Dispatchers.Default) {
-            var hadFallback = false
-            val success = item.process(
-                selectedAlgorithm,
-                processType,
-                keyString,
-                forceCompat = isCompatMode,
-                onFallback = { hadFallback = true }
-            )
-            val durationMs = System.currentTimeMillis() - startTime
-            withContext(Dispatchers.Main) {
-                if (index in images.indices) {
-                    images[index] = item // 触发 Snapshot 重绘
-                }
-                if (hadFallback) onFallbackToast()
-                else if (!success) onFailedToast()
-                else onSuccess?.invoke(durationMs)
-            }
-        }
-    }
+    ) = scramble.processSingleImage(index, processType, onFallbackToast, onFailedToast, onSuccess)
 
-    fun rotateSingleImage(index: Int) {
-        if (index in images.indices) {
-            val item = images[index]
-            item.rotate(180f)
-            images[index] = item
-        }
-    }
+    fun rotateSingleImage(index: Int) = scramble.rotateSingleImage(index)
+    fun stripImageExifAt(index: Int) = scramble.stripImageExifAt(index)
+    fun reloadSingleImage(index: Int) = scramble.reloadSingleImage(index)
+    fun saveSingleImage(index: Int, onComplete: (Boolean) -> Unit) = scramble.saveSingleImage(index, onComplete)
 
-    fun stripImageExifAt(index: Int) {
-        if (index in images.indices) {
-            images[index].stripExifPrivacy()
-            images[index] = images[index]
-        }
-    }
+    // =========================================================================
+    // 兼容层代理：Tab 1 图种隐写 (StegoViewModel)
+    // =========================================================================
+    var stegoMode: Int
+        get() = stego.stegoMode
+        set(value) { stego.stegoMode = value }
 
-    fun reloadSingleImage(index: Int) {
-        if (index in images.indices) {
-            val item = images[index]
-            item.reload()
-            images[index] = item
-        }
-    }
+    var stegoCoverUri: Uri?
+        get() = stego.stegoCoverUri
+        set(value) { stego.stegoCoverUri = value }
 
-    fun saveSingleImage(index: Int, onComplete: (Boolean) -> Unit) {
-        if (index !in images.indices) return
-        val item = images[index]
-        val resolvedName = ExportFilenameGenerator.generateFilename(
-            template = exportFilenamePattern,
-            prefix = exportCustomPrefix,
-            originalFilename = item.filename,
-            index = index,
-            algorithmName = selectedAlgorithm.name,
-            extension = exportFormat.extension
-        )
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = item.saveWithDetail(
-                index,
-                format = exportFormat,
-                quality = exportQuality,
-                stripExif = isStripExifOnExport,
-                customFilename = resolvedName
-            ) is com.example.picencrypt.model.SaveResult.Success
-            withContext(Dispatchers.Main) {
-                onComplete(result)
-            }
-        }
-    }
+    var stegoArchiveUri: Uri?
+        get() = stego.stegoArchiveUri
+        set(value) { stego.stegoArchiveUri = value }
 
-    // ---------------- 业务方法：图种隐写 ----------------
+    var stegoCoverThumbnail: Bitmap?
+        get() = stego.stegoCoverThumbnail
+        set(value) { stego.stegoCoverThumbnail = value }
 
-    fun setStegoCover(uri: Uri?, context: Context) {
-        stegoCoverJob?.cancel()
-        stegoCoverUri = uri
-        if (uri == null) {
-            stegoCoverThumbnail = null
-            stegoCoverFileSize = 0L
-        } else {
-            stegoCoverJob = viewModelScope.launch(Dispatchers.IO) {
-                val thumb = FileUtils.loadThumbnail(context, uri, 240)
-                val size = FileUtils.getUriFileSize(context, uri)
-                withContext(Dispatchers.Main) {
-                    stegoCoverThumbnail = thumb
-                    stegoCoverFileSize = size
-                }
-            }
-        }
-    }
+    var stegoCoverFileSize: Long
+        get() = stego.stegoCoverFileSize
+        set(value) { stego.stegoCoverFileSize = value }
 
-    fun setStegoArchive(uri: Uri?, context: Context) {
-        stegoArchiveJob?.cancel()
-        stegoArchiveUri = uri
-        if (uri == null) {
-            stegoArchiveFileSize = 0L
-        } else {
-            stegoArchiveJob = viewModelScope.launch(Dispatchers.IO) {
-                val size = FileUtils.getUriFileSize(context, uri)
-                withContext(Dispatchers.Main) {
-                    stegoArchiveFileSize = size
-                }
-            }
-        }
-    }
+    var stegoArchiveFileSize: Long
+        get() = stego.stegoArchiveFileSize
+        set(value) { stego.stegoArchiveFileSize = value }
 
-    fun setStegoExtractTarget(uri: Uri?, context: Context) {
-        stegoExtractJob?.cancel()
-        stegoExtractTargetUri = uri
-        stegoInspection = null
-        if (uri == null) {
-            stegoExtractThumbnail = null
-            stegoExtractFileSize = 0L
-            isStegoInspecting = false
-        } else {
-            isStegoInspecting = true
-            stegoExtractJob = viewModelScope.launch(Dispatchers.IO) {
-                val thumb = FileUtils.loadThumbnail(context, uri, 240)
-                val totalSize = FileUtils.getUriFileSize(context, uri)
-                val inspection = FileUtils.inspectStegoUri(context, uri)
-                withContext(Dispatchers.Main) {
-                    stegoExtractThumbnail = thumb
-                    stegoExtractFileSize = if (totalSize > 0L) totalSize else inspection.totalSize
-                    stegoInspection = inspection
-                    isStegoInspecting = false
-                }
-            }
-        }
-    }
+    var stegoExtractTargetUri: Uri?
+        get() = stego.stegoExtractTargetUri
+        set(value) { stego.stegoExtractTargetUri = value }
 
-    fun createStego(context: Context, onResult: (Boolean) -> Unit) {
-        val cUri = stegoCoverUri ?: return
-        val aUri = stegoArchiveUri ?: return
-        isStegoProcessing = true
-        viewModelScope.launch(Dispatchers.IO) {
-            val ok = FileUtils.saveStegoImage(context, cUri, aUri)
-            withContext(Dispatchers.Main) {
-                isStegoProcessing = false
-                onResult(ok)
-            }
-        }
-    }
+    var stegoExtractThumbnail: Bitmap?
+        get() = stego.stegoExtractThumbnail
+        set(value) { stego.stegoExtractThumbnail = value }
 
-    fun extractStego(context: Context, onResult: (String?) -> Unit) {
-        val tUri = stegoExtractTargetUri ?: return
-        isStegoProcessing = true
-        viewModelScope.launch(Dispatchers.IO) {
-            val fileName = FileUtils.extractArchiveFromStego(context, tUri)
-            withContext(Dispatchers.Main) {
-                isStegoProcessing = false
-                onResult(fileName)
-            }
-        }
-    }
+    var stegoExtractFileSize: Long
+        get() = stego.stegoExtractFileSize
+        set(value) { stego.stegoExtractFileSize = value }
 
-    // ---------------- 业务方法：幻影坦克 ----------------
+    var stegoInspection: SteganographyHelper.StegoInspection?
+        get() = stego.stegoInspection
+        set(value) { stego.stegoInspection = value }
 
-    fun setMirageCover(uri: Uri?, context: Context) {
-        mirageCoverJob?.cancel()
-        mirageCoverUri = uri
-        miragePreviewBitmap = null
-        if (uri == null) {
-            mirageCoverThumbnail = null
-        } else {
-            mirageCoverJob = viewModelScope.launch(Dispatchers.IO) {
-                val thumb = FileUtils.loadThumbnail(context, uri, 240)
-                withContext(Dispatchers.Main) {
-                    mirageCoverThumbnail = thumb
-                }
-            }
-        }
-    }
+    var isStegoInspecting: Boolean
+        get() = stego.isStegoInspecting
+        set(value) { stego.isStegoInspecting = value }
 
-    fun setMirageHidden(uri: Uri?, context: Context) {
-        mirageHiddenJob?.cancel()
-        mirageHiddenUri = uri
-        miragePreviewBitmap = null
-        if (uri == null) {
-            mirageHiddenThumbnail = null
-        } else {
-            mirageHiddenJob = viewModelScope.launch(Dispatchers.IO) {
-                val thumb = FileUtils.loadThumbnail(context, uri, 240)
-                withContext(Dispatchers.Main) {
-                    mirageHiddenThumbnail = thumb
-                }
-            }
-        }
-    }
+    var isStegoProcessing: Boolean
+        get() = stego.isStegoProcessing
+        set(value) { stego.isStegoProcessing = value }
 
-    fun loadMiragePreset(theme: MiragePresetGenerator.PresetTheme, context: Context) {
-        val (coverBmp, hiddenBmp) = MiragePresetGenerator.generatePresetBitmaps(theme)
-        val (coverUri, hiddenUri) = MiragePresetGenerator.createPresetUris(context, theme)
-        mirageCoverUri = coverUri
-        mirageHiddenUri = hiddenUri
-        mirageCoverThumbnail = Bitmap.createScaledBitmap(coverBmp, 140, 140, true)
-        mirageHiddenThumbnail = Bitmap.createScaledBitmap(hiddenBmp, 140, 140, true)
-        miragePreviewBitmap = null
-        generateMiragePreview(context)
-    }
+    fun setStegoCover(uri: Uri?, context: Context) = stego.setStegoCover(uri, context)
+    fun setStegoArchive(uri: Uri?, context: Context) = stego.setStegoArchive(uri, context)
+    fun setStegoExtractTarget(uri: Uri?, context: Context) = stego.setStegoExtractTarget(uri, context)
+    fun createStego(context: Context, onResult: (Boolean) -> Unit) = stego.createStego(context, onResult)
+    fun extractStego(context: Context, onResult: (String?) -> Unit) = stego.extractStego(context, onResult)
 
-    fun swapMirageImages() {
-        val tempUri = mirageCoverUri
-        mirageCoverUri = mirageHiddenUri
-        mirageHiddenUri = tempUri
+    // =========================================================================
+    // 兼容层代理：Tab 2 幻影坦克 (MirageViewModel)
+    // =========================================================================
+    var mirageIsColoredMode: Boolean
+        get() = mirage.mirageIsColoredMode
+        set(value) { mirage.mirageIsColoredMode = value }
 
-        val tempThumb = mirageCoverThumbnail
-        mirageCoverThumbnail = mirageHiddenThumbnail
-        mirageHiddenThumbnail = tempThumb
+    var mirageScaleMode: MirageTankBridge.MirageScaleMode
+        get() = mirage.mirageScaleMode
+        set(value) { mirage.mirageScaleMode = value }
 
-        miragePreviewBitmap = null
-    }
+    var mirageCoverUri: Uri?
+        get() = mirage.mirageCoverUri
+        set(value) { mirage.mirageCoverUri = value }
 
-    fun generateMiragePreview(context: Context, onResult: (Boolean) -> Unit = {}) {
-        val cUri = mirageCoverUri ?: return
-        val hUri = mirageHiddenUri ?: return
-        isMirageProcessing = true
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val coverBmp = context.contentResolver.openInputStream(cUri)?.use { BitmapFactory.decodeStream(it) }
-                val hiddenBmp = context.contentResolver.openInputStream(hUri)?.use { BitmapFactory.decodeStream(it) }
-                if (coverBmp != null && hiddenBmp != null) {
-                    val preview = MirageTankBridge.createMirageBitmap(
-                        coverBmp,
-                        hiddenBmp,
-                        isColored = mirageIsColoredMode,
-                        maxDimension = 1200,
-                        mode = mirageScaleMode,
-                        coverBrightness = mirageCoverBrightness,
-                        coverContrast = mirageCoverContrast,
-                        hiddenBrightness = mirageHiddenBrightness,
-                        hiddenContrast = mirageHiddenContrast
-                    )
-                    withContext(Dispatchers.Main) {
-                        miragePreviewBitmap = preview
-                        isMirageProcessing = false
-                        onResult(preview != null)
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        isMirageProcessing = false
-                        onResult(false)
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    isMirageProcessing = false
-                    onResult(false)
-                }
-            }
-        }
-    }
+    var mirageHiddenUri: Uri?
+        get() = mirage.mirageHiddenUri
+        set(value) { mirage.mirageHiddenUri = value }
 
-    /**
-     * 正式导出幻影坦克：始终基于原始全分辨率表图与里图进行高精度合成，
-     * 避免复用受限于 1200px 的预览位图。
-     * @param maxDimension 最大长边限制，0 表示不限制（原始全分辨率）
-     */
-    fun exportMirageFullResolution(
-        context: Context,
-        maxDimension: Int = 0,
-        onResult: (Boolean) -> Unit
-    ) {
-        val cUri = mirageCoverUri ?: run {
-            onResult(false)
-            return
-        }
-        val hUri = mirageHiddenUri ?: run {
-            onResult(false)
-            return
-        }
+    var mirageCoverThumbnail: Bitmap?
+        get() = mirage.mirageCoverThumbnail
+        set(value) { mirage.mirageCoverThumbnail = value }
 
-        isMirageProcessing = true
-        viewModelScope.launch(Dispatchers.IO) {
-            var coverBmp: Bitmap? = null
-            var hiddenBmp: Bitmap? = null
-            var outBmp: Bitmap? = null
-            try {
-                coverBmp = context.contentResolver.openInputStream(cUri)?.use { BitmapFactory.decodeStream(it) }
-                hiddenBmp = context.contentResolver.openInputStream(hUri)?.use { BitmapFactory.decodeStream(it) }
-                if (coverBmp != null && hiddenBmp != null) {
-                    val (saved, generatedBmp) = MirageTankBridge.createAndSaveMirageTank(
-                        context,
-                        coverBmp,
-                        hiddenBmp,
-                        isColored = mirageIsColoredMode,
-                        maxDimension = maxDimension,
-                        mode = mirageScaleMode,
-                        coverBrightness = mirageCoverBrightness,
-                        coverContrast = mirageCoverContrast,
-                        hiddenBrightness = mirageHiddenBrightness,
-                        hiddenContrast = mirageHiddenContrast
-                    )
-                    outBmp = generatedBmp
-                    withContext(Dispatchers.Main) {
-                        isMirageProcessing = false
-                        onResult(saved)
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        isMirageProcessing = false
-                        onResult(false)
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    isMirageProcessing = false
-                    onResult(false)
-                }
-            } finally {
-                coverBmp?.takeUnless { it.isRecycled }?.recycle()
-                hiddenBmp?.takeUnless { it.isRecycled }?.recycle()
-                outBmp?.takeUnless { it.isRecycled }?.recycle()
-            }
-        }
-    }
+    var mirageHiddenThumbnail: Bitmap?
+        get() = mirage.mirageHiddenThumbnail
+        set(value) { mirage.mirageHiddenThumbnail = value }
 
-    /**
-     * 兼容方法：默认以原始全分辨率保存幻影坦克
-     */
-    fun saveMiragePreview(context: Context, onResult: (Boolean) -> Unit) {
-        exportMirageFullResolution(context, maxDimension = 0, onResult = onResult)
-    }
+    var miragePreviewBitmap: Bitmap?
+        get() = mirage.miragePreviewBitmap
+        set(value) { mirage.miragePreviewBitmap = value }
 
-    // ---------------- 业务方法：安全保险箱 (AES-256-GCM) ----------------
+    var mirageCoverBrightness: Float
+        get() = mirage.mirageCoverBrightness
+        set(value) { mirage.mirageCoverBrightness = value }
 
-    fun setSafeSourceFile(uri: Uri?, context: Context) {
-        safeSourceJob?.cancel()
-        safeSourceUri = uri
-        if (uri == null) {
-            safeSourceFileName = ""
-            safeSourceFileSize = 0L
-            safeRpxHeader = null
-            return
-        }
-        val name = FileUtils.getUriFilename(context, uri)
-        val size = FileUtils.getUriFileSize(context, uri)
-        safeSourceFileName = name
-        safeSourceFileSize = size
+    var mirageCoverContrast: Float
+        get() = mirage.mirageCoverContrast
+        set(value) { mirage.mirageCoverContrast = value }
 
-        if (safeMode == 1 || name.endsWith(".rpx", ignoreCase = true)) {
-            safeSourceJob = viewModelScope.launch(Dispatchers.IO) {
-                try {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        val header = CryptoUtils.inspectHeader(input)
-                        withContext(Dispatchers.Main) {
-                            safeRpxHeader = header
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-        } else {
-            safeRpxHeader = null
-        }
-    }
+    var mirageHiddenBrightness: Float
+        get() = mirage.mirageHiddenBrightness
+        set(value) { mirage.mirageHiddenBrightness = value }
 
-    fun executeSafeEncryption(
-        context: Context,
-        onResult: (success: Boolean, message: String) -> Unit
-    ) {
-        val uri = safeSourceUri ?: return
-        val pwd = safePassword
-        if (pwd.length < 6) {
-            onResult(false, context.getString(com.example.picencrypt.R.string.safe_password_hint))
-            return
-        }
+    var mirageHiddenContrast: Float
+        get() = mirage.mirageHiddenContrast
+        set(value) { mirage.mirageHiddenContrast = value }
 
-        isSafeProcessing = true
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val origName = FileUtils.sanitizeFilename(safeSourceFileName.ifEmpty { "file" }, "file")
-                val outName = "${origName}.rpx"
-                val plainLength = safeSourceFileSize.coerceAtLeast(0L)
+    var isMirageProcessing: Boolean
+        get() = mirage.isMirageProcessing
+        set(value) { mirage.isMirageProcessing = value }
 
-                val pwdChars = pwd.toCharArray()
-                val saved = try {
-                    FileUtils.writeStreamToDownload(context, outName) { outStream ->
-                        context.contentResolver.openInputStream(uri)?.use { inStream ->
-                            CryptoUtils.encryptStream(
-                                input = inStream,
-                                output = outStream,
-                                password = pwdChars,
-                                originalFilename = origName,
-                                plainLength = plainLength
-                            )
-                            true
-                        } ?: false
-                    }
-                } finally {
-                    pwdChars.fill('\u0000')
-                }
+    var mirageBgMode: Int
+        get() = mirage.mirageBgMode
+        set(value) { mirage.mirageBgMode = value }
 
-                withContext(Dispatchers.Main) {
-                    isSafeProcessing = false
-                    if (saved) {
-                        onResult(true, context.getString(com.example.picencrypt.R.string.safe_encrypt_success))
-                    } else {
-                        onResult(false, context.getString(com.example.picencrypt.R.string.stego_failed))
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    isSafeProcessing = false
-                    onResult(false, e.localizedMessage ?: context.getString(com.example.picencrypt.R.string.stego_failed))
-                }
-            }
-        }
-    }
+    var isMirageAdjustExpanded: Boolean
+        get() = mirage.isMirageAdjustExpanded
+        set(value) { mirage.isMirageAdjustExpanded = value }
 
-    fun executeSafeDecryption(
-        context: Context,
-        onResult: (success: Boolean, message: String) -> Unit
-    ) {
-        val uri = safeSourceUri ?: return
-        val pwd = safePassword
-        if (pwd.isEmpty()) {
-            onResult(false, context.getString(com.example.picencrypt.R.string.safe_password_hint))
-            return
-        }
+    fun resetMirageParams() = mirage.resetMirageParams()
+    fun resetMirageAdjustments() = mirage.resetMirageAdjustments()
+    fun autoOptimizeMirageParams(context: Context? = null) = mirage.autoOptimizeMirageParams(context)
+    fun setMirageCover(uri: Uri?, context: Context) = mirage.setMirageCover(uri, context)
+    fun setMirageHidden(uri: Uri?, context: Context) = mirage.setMirageHidden(uri, context)
+    fun loadMiragePreset(theme: MiragePresetGenerator.PresetTheme, context: Context) = mirage.loadMiragePreset(theme, context)
+    fun swapMirageImages() = mirage.swapMirageImages()
+    fun generateMiragePreview(context: Context, onResult: (Boolean) -> Unit = {}) = mirage.generateMiragePreview(context, onResult)
+    fun exportMirageFullResolution(context: Context, maxDimension: Int = 0, onResult: (Boolean) -> Unit) = mirage.exportMirageFullResolution(context, maxDimension, onResult)
+    fun saveMiragePreview(context: Context, onResult: (Boolean) -> Unit) = mirage.saveMiragePreview(context, onResult)
 
-        isSafeProcessing = true
-        viewModelScope.launch(Dispatchers.IO) {
-            val tempFile = File(context.cacheDir, "temp_safe_decrypt_${System.currentTimeMillis()}.tmp")
-            try {
-                val pwdChars = pwd.toCharArray()
-                val decryptResult = try {
-                    context.contentResolver.openInputStream(uri)?.use { inStream ->
-                        FileOutputStream(tempFile).use { tempOut ->
-                            CryptoUtils.decryptStream(inStream, tempOut, pwdChars)
-                        }
-                    } ?: CryptoUtils.DecryptResult.InvalidFormat(context.getString(com.example.picencrypt.R.string.file_not_found))
-                } finally {
-                    pwdChars.fill('\u0000')
-                }
+    // =========================================================================
+    // 兼容层代理：Tab 3 安全保险箱 (SafeViewModel)
+    // =========================================================================
+    var safeMode: Int
+        get() = safe.safeMode
+        set(value) { safe.safeMode = value }
 
-                when (decryptResult) {
-                    is CryptoUtils.DecryptResult.Success -> {
-                        val outName = FileUtils.sanitizeFilename(decryptResult.originalFilename, "decrypted_file")
-                        val saved = FileInputStream(tempFile).use { tempIn ->
-                            FileUtils.saveStreamToDownload(context, outName, tempIn)
-                        }
-                        withContext(Dispatchers.Main) {
-                            isSafeProcessing = false
-                            if (saved) {
-                                onResult(true, context.getString(com.example.picencrypt.R.string.safe_decrypt_success))
-                            } else {
-                                onResult(false, context.getString(com.example.picencrypt.R.string.stego_failed))
-                            }
-                        }
-                    }
-                    is CryptoUtils.DecryptResult.WrongPasswordOrCorrupted -> {
-                        withContext(Dispatchers.Main) {
-                            isSafeProcessing = false
-                            onResult(false, context.getString(com.example.picencrypt.R.string.safe_decrypt_wrong_password))
-                        }
-                    }
-                    is CryptoUtils.DecryptResult.InvalidFormat -> {
-                        withContext(Dispatchers.Main) {
-                            isSafeProcessing = false
-                            onResult(false, context.getString(com.example.picencrypt.R.string.safe_decrypt_invalid_format))
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    isSafeProcessing = false
-                    onResult(false, e.localizedMessage ?: context.getString(com.example.picencrypt.R.string.stego_failed))
-                }
-            } finally {
-                if (tempFile.exists()) {
-                    try { tempFile.delete() } catch (_: Exception) {}
-                }
-            }
-        }
-    }
+    var safePassword: String
+        get() = safe.safePassword
+        set(value) { safe.safePassword = value }
+
+    var safeSourceUri: Uri?
+        get() = safe.safeSourceUri
+        set(value) { safe.safeSourceUri = value }
+
+    var safeSourceFileName: String
+        get() = safe.safeSourceFileName
+        set(value) { safe.safeSourceFileName = value }
+
+    var safeSourceFileSize: Long
+        get() = safe.safeSourceFileSize
+        set(value) { safe.safeSourceFileSize = value }
+
+    var safeRpxHeader: CryptoUtils.RpxHeader?
+        get() = safe.safeRpxHeader
+        set(value) { safe.safeRpxHeader = value }
+
+    var isSafeProcessing: Boolean
+        get() = safe.isSafeProcessing
+        set(value) { safe.isSafeProcessing = value }
+
+    fun setSafeSourceFile(uri: Uri?, context: Context) = safe.setSafeSourceFile(uri, context)
+    fun executeSafeEncryption(context: Context, onResult: (success: Boolean, message: String) -> Unit) = safe.executeSafeEncryption(context, onResult)
+    fun executeSafeDecryption(context: Context, onResult: (success: Boolean, message: String) -> Unit) = safe.executeSafeDecryption(context, onResult)
 }

@@ -271,10 +271,10 @@ fun MainApp(
                     label = "MainTabTransition"
                 ) { tab ->
                     when (tab) {
-                        0 -> EncryptScreen(viewModel = viewModel)
-                        1 -> StegoScreen(viewModel = viewModel)
-                        2 -> MirageScreen(viewModel = viewModel)
-                        3 -> SafeScreen(viewModel = viewModel)
+                        0 -> EncryptScreen(viewModel = viewModel.scramble)
+                        1 -> StegoScreen(viewModel = viewModel.stego)
+                        2 -> MirageScreen(viewModel = viewModel.mirage)
+                        3 -> SafeScreen(viewModel = viewModel.safe)
                     }
                 }
 

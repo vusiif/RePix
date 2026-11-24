@@ -72,12 +72,24 @@ import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.MirageTankBridge
 import com.example.picencrypt.utils.MiragePresetGenerator
 import com.example.picencrypt.viewmodel.MainViewModel
+import com.example.picencrypt.viewmodel.MirageViewModel
 import com.example.picencrypt.ui.components.ImageViewerDialog
+
+@Composable
+fun MirageScreen(
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier
+) {
+    MirageScreen(
+        viewModel = viewModel.mirage,
+        modifier = modifier
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MirageScreen(
-    viewModel: MainViewModel,
+    viewModel: MirageViewModel,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
