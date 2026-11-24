@@ -25,3 +25,4 @@ scratch/
 # Markdown 一律不入库（README 除外；文档等出第一版 release 时再写）
 *.md
 !README.md
+!CHANGELOG.md
