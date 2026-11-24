@@ -19,6 +19,7 @@ import com.example.picencrypt.utils.ExifUtils
 import com.example.picencrypt.utils.FileUtils
 import com.example.picencrypt.utils.ImageMetrics
 import com.example.picencrypt.utils.ImageMetricsHelper
+import com.example.picencrypt.utils.LcgShuffleScramble
 import com.example.picencrypt.utils.MediaStoreOutputWriter
 import com.example.picencrypt.utils.ImageScramble.Image
 import com.example.picencrypt.utils.ImageScramble.ProcessType
@@ -273,19 +274,16 @@ class MyImage(
             return false
         }
 
-        // LCG_SHUFFLE: Direct Zero-Copy in-place processing on Bitmap, strictly check JNI result (P0-2)
-        if (algorithm == Algorithm.LCG_SHUFFLE) {
-            if (!NativeShuffleBridge.isAvailable()) {
-                return false
-            }
+        // LCG_SHUFFLE: Direct Zero-Copy in-place processing on Bitmap when Native is available and not in forced compat mode (P0-2)
+        if (algorithm == Algorithm.LCG_SHUFFLE && !forceCompat && NativeShuffleBridge.isAvailable()) {
             val seed = NativeShuffleBridge.stringToSeed(key)
             val success = NativeShuffleBridge.scrambleBitmap(currentBmp, seed, processType == ProcessType.DECRYPT)
-            if (!success) {
-                return false
+            if (success) {
+                cachedMetrics = null
+                thumbnail = createThumbnailFromBitmap(currentBmp)
+                return true
             }
-            cachedMetrics = null
-            thumbnail = createThumbnailFromBitmap(currentBmp)
-            return true
+            // If native processing failed, fall through to pure Kotlin/Java fallback below
         }
 
         val pixels = IntArray(currentBmp.width * currentBmp.height)
@@ -326,7 +324,7 @@ class MyImage(
                     Algorithm.PER_PIXEL -> PerPixelScramble(fallbackImage, key).process(processType)
                     Algorithm.PIC_ENCRYPT_ROW -> PicEncryptRowScramble(fallbackImage, key.toDoubleOrNull() ?: 0.5).process(processType)
                     Algorithm.PIC_ENCRYPT_ROW_AND_COLUMN -> PicEncryptRowColumnScramble(fallbackImage, key.toDoubleOrNull() ?: 0.5).process(processType)
-                    Algorithm.LCG_SHUFFLE -> fallbackImage
+                    Algorithm.LCG_SHUFFLE -> LcgShuffleScramble(fallbackImage, key).process(processType)
                 }
             } catch (t: Throwable) {
                 return false

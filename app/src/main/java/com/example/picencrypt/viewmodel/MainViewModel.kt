@@ -349,4 +349,6 @@ class MainViewModel(
     fun setSafeSourceFile(uri: Uri?, context: Context) = safe.setSafeSourceFile(uri, context)
     fun executeSafeEncryption(context: Context, onResult: (success: Boolean, message: String) -> Unit) = safe.executeSafeEncryption(context, onResult)
     fun executeSafeDecryption(context: Context, onResult: (success: Boolean, message: String) -> Unit) = safe.executeSafeDecryption(context, onResult)
+    fun clearSafePassword() = safe.clearPassword()
+    fun clearSafeState() = safe.clearSafeState()
 }

@@ -144,6 +144,20 @@ class AlgorithmRoundTripTest {
     }
 
     @Test
+    fun testLcgShuffleScrambleRoundTrip() {
+        val w = 50
+        val h = 50
+        val original = createGradientImage(w, h)
+        val copyOfPixels = original.pixels.clone()
+
+        val encrypted = com.example.picencrypt.utils.LcgShuffleScramble(Image(original.pixels.clone(), w, h), "SampleSeed123").process(ProcessType.ENCRYPT)
+        assertFalse("Pixels should be scrambled", copyOfPixels.contentEquals(encrypted.pixels))
+
+        val decrypted = com.example.picencrypt.utils.LcgShuffleScramble(Image(encrypted.pixels.clone(), w, h), "SampleSeed123").process(ProcessType.DECRYPT)
+        assertArrayEquals("Decrypted pixels must 100% match original", copyOfPixels, decrypted.pixels)
+    }
+
+    @Test
     fun testAlgorithmKeyValidityRules() {
         // Tomato key validity: (0.0, 1.618]
         assertTrue(Algorithm.checkTomatoKeyValidity("1"))

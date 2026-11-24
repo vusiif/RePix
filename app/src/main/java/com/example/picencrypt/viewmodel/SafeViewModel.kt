@@ -192,6 +192,10 @@ class SafeViewModel(
         }
     }
 
+    fun clearPassword() {
+        safePassword = ""
+    }
+
     fun clearSafeState() {
         safeSourceJob?.cancel()
         safeSourceUri = null

@@ -29,6 +29,16 @@ class SafeViewModelTest {
     }
 
     @Test
+    fun testClearPassword() {
+        val vm = SafeViewModel()
+        vm.safePassword = "SuperSecretKey999"
+        assertEquals("SuperSecretKey999", vm.safePassword)
+
+        vm.clearPassword()
+        assertEquals("", vm.safePassword)
+    }
+
+    @Test
     fun testClearSafeState() {
         val vm = SafeViewModel()
         vm.safeMode = 1

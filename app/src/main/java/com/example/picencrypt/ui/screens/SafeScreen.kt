@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Warning
@@ -334,11 +335,21 @@ fun SafeScreen(
                     )
                 },
                 trailingIcon = {
-                    IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
-                        Icon(
-                            imageVector = if (isPasswordVisible) Icons.Rounded.Info else Icons.Rounded.Lock,
-                            contentDescription = "Toggle Password Visibility"
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (viewModel.safePassword.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.clearPassword() }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Clear Password"
+                                )
+                            }
+                        }
+                        IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                            Icon(
+                                imageVector = if (isPasswordVisible) Icons.Rounded.Info else Icons.Rounded.Lock,
+                                contentDescription = "Toggle Password Visibility"
+                            )
+                        }
                     }
                 },
                 singleLine = true,
@@ -395,6 +406,7 @@ fun SafeScreen(
                     if (viewModel.safeMode == 0) {
                         viewModel.executeSafeEncryption(context) { success, msg ->
                             if (success) {
+                                viewModel.clearPassword()
                                 haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
                             }
                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
@@ -402,6 +414,7 @@ fun SafeScreen(
                     } else {
                         viewModel.executeSafeDecryption(context) { success, msg ->
                             if (success) {
+                                viewModel.clearPassword()
                                 haptic.performHapticIf(HapticFeedbackType.LongPress, viewModel.isHapticFeedbackEnabled)
                             }
                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
