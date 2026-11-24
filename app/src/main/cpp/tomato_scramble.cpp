@@ -11,7 +11,13 @@ TomatoScramble::TomatoScramble(const int32_t* pixels, int32_t width, int32_t hei
     // Matches Java: (int) Math.round((Math.sqrt(5) - 1) / 2 * pixelCount * key);
     // Note: Math.round in Java performs (long) Math.floor(x + 0.5d)
     double raw_offset = ((std::sqrt(5.0) - 1.0) / 2.0) * static_cast<double>(pixel_count_) * key;
-    offset_ = static_cast<int32_t>(std::floor(raw_offset + 0.5));
+    int32_t computed_offset = static_cast<int32_t>(std::floor(raw_offset + 0.5));
+    // Normalize offset to [0, pixel_count_) to prevent heap out-of-bounds access on negative/large keys
+    if (pixel_count_ > 0) {
+        offset_ = ((computed_offset % pixel_count_) + pixel_count_) % pixel_count_;
+    } else {
+        offset_ = 0;
+    }
 }
 
 void TomatoScramble::gilbert2d() {

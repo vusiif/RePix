@@ -947,17 +947,22 @@ class MainViewModel : ViewModel() {
                 val outName = "${origName}.rpx"
                 val plainLength = safeSourceFileSize.coerceAtLeast(0L)
 
-                val saved = FileUtils.writeStreamToDownload(context, outName) { outStream ->
-                    context.contentResolver.openInputStream(uri)?.use { inStream ->
-                        CryptoUtils.encryptStream(
-                            input = inStream,
-                            output = outStream,
-                            password = pwd.toCharArray(),
-                            originalFilename = origName,
-                            plainLength = plainLength
-                        )
-                        true
-                    } ?: false
+                val pwdChars = pwd.toCharArray()
+                val saved = try {
+                    FileUtils.writeStreamToDownload(context, outName) { outStream ->
+                        context.contentResolver.openInputStream(uri)?.use { inStream ->
+                            CryptoUtils.encryptStream(
+                                input = inStream,
+                                output = outStream,
+                                password = pwdChars,
+                                originalFilename = origName,
+                                plainLength = plainLength
+                            )
+                            true
+                        } ?: false
+                    }
+                } finally {
+                    pwdChars.fill('\u0000')
                 }
 
                 withContext(Dispatchers.Main) {
@@ -993,11 +998,16 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             val tempFile = File(context.cacheDir, "temp_safe_decrypt_${System.currentTimeMillis()}.tmp")
             try {
-                val decryptResult = context.contentResolver.openInputStream(uri)?.use { inStream ->
-                    FileOutputStream(tempFile).use { tempOut ->
-                        CryptoUtils.decryptStream(inStream, tempOut, pwd.toCharArray())
-                    }
-                } ?: CryptoUtils.DecryptResult.InvalidFormat(context.getString(com.example.picencrypt.R.string.file_not_found))
+                val pwdChars = pwd.toCharArray()
+                val decryptResult = try {
+                    context.contentResolver.openInputStream(uri)?.use { inStream ->
+                        FileOutputStream(tempFile).use { tempOut ->
+                            CryptoUtils.decryptStream(inStream, tempOut, pwdChars)
+                        }
+                    } ?: CryptoUtils.DecryptResult.InvalidFormat(context.getString(com.example.picencrypt.R.string.file_not_found))
+                } finally {
+                    pwdChars.fill('\u0000')
+                }
 
                 when (decryptResult) {
                     is CryptoUtils.DecryptResult.Success -> {

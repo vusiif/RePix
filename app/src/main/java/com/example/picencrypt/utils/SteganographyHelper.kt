@@ -255,8 +255,9 @@ object SteganographyHelper {
 
         if (version.toInt() != 2) return null
         if (offset < 8L || length <= 0L) return null
-        if (totalFileSize > 0L && offset + length + TRAILER_V2_SIZE != totalFileSize) {
-            return null
+        if (totalFileSize > 0L) {
+            if (offset >= totalFileSize || length >= totalFileSize) return null
+            if (totalFileSize - TRAILER_V2_SIZE - length != offset) return null
         }
         return DetectionResult(
             type = ArchiveType.fromCode(typeCode),
@@ -323,13 +324,13 @@ object SteganographyHelper {
                         if (readChunk < 8) break
                         currentOffset += 8
 
-                        val length = ((chunkHeader[0].toInt() and 0xFF) shl 24) or
-                                ((chunkHeader[1].toInt() and 0xFF) shl 16) or
-                                ((chunkHeader[2].toInt() and 0xFF) shl 8) or
-                                (chunkHeader[3].toInt() and 0xFF)
+                        val length = ((chunkHeader[0].toLong() and 0xFFL) shl 24) or
+                                ((chunkHeader[1].toLong() and 0xFFL) shl 16) or
+                                ((chunkHeader[2].toLong() and 0xFFL) shl 8) or
+                                (chunkHeader[3].toLong() and 0xFFL)
                         val type = String(chunkHeader, 4, 4, Charsets.US_ASCII)
 
-                        val skipBytes = length.toLong() + 4L
+                        val skipBytes = length + 4L
                         if (type == "IEND") {
                             var skipped = 0L
                             while (skipped < skipBytes) {
@@ -465,17 +466,17 @@ object SteganographyHelper {
                     if (read < 8) break
                     currentOffset += 8
 
-                    val length = ((chunkHeader[0].toInt() and 0xFF) shl 24) or
-                            ((chunkHeader[1].toInt() and 0xFF) shl 16) or
-                            ((chunkHeader[2].toInt() and 0xFF) shl 8) or
-                            (chunkHeader[3].toInt() and 0xFF)
+                    val length = ((chunkHeader[0].toLong() and 0xFFL) shl 24) or
+                            ((chunkHeader[1].toLong() and 0xFFL) shl 16) or
+                            ((chunkHeader[2].toLong() and 0xFFL) shl 8) or
+                            (chunkHeader[3].toLong() and 0xFFL)
                     val type = String(chunkHeader, 4, 4, Charsets.US_ASCII)
 
                     if (type == "IEND") {
-                        return currentOffset + length.toLong() + 4L
+                        return currentOffset + length + 4L
                     }
 
-                    val skipBytes = length.toLong() + 4L
+                    val skipBytes = length + 4L
                     var skipped = 0L
                     while (skipped < skipBytes) {
                         val s = fis.skip(skipBytes - skipped)

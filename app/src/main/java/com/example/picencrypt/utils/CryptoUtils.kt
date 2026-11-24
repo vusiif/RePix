@@ -103,9 +103,13 @@ object CryptoUtils {
         iterations: Int = PBKDF2_ITERATIONS_V2
     ): SecretKeySpec {
         val spec = PBEKeySpec(password, salt, iterations, KEY_LENGTH_BITS)
-        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val keyBytes = factory.generateSecret(spec).encoded
-        return SecretKeySpec(keyBytes, "AES")
+        return try {
+            val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            val keyBytes = factory.generateSecret(spec).encoded
+            SecretKeySpec(keyBytes, "AES")
+        } finally {
+            spec.clearPassword()
+        }
     }
 
     /**

@@ -12,6 +12,10 @@ BlockScramble::BlockScramble(const int32_t* pixels, int32_t width, int32_t heigh
       x_block_count_(x_block_count), y_block_count_(y_block_count) {}
 
 ScrambleResult BlockScramble::process(ProcessType process_type) {
+    if (x_block_count_ <= 0 || y_block_count_ <= 0 || width_ <= 0 || height_ <= 0) {
+        return ScrambleResult{};
+    }
+
     const std::vector<int32_t> x_array = shuffle(x_block_count_);
     const std::vector<int32_t> y_array = shuffle(y_block_count_);
 

@@ -24,7 +24,12 @@ public class TomatoScramble extends ImageScramble {
 	
 	public TomatoScramble(int[] pixels, int width, int height, double key) {
 		super(pixels, width, height);
-		offset = (int) Math.round((Math.sqrt(5) - 1) / 2 * pixelCount * key);
+		int rawOffset = (int) Math.round((Math.sqrt(5) - 1) / 2 * pixelCount * key);
+		if (pixelCount > 0) {
+			offset = ((rawOffset % pixelCount) + pixelCount) % pixelCount;
+		} else {
+			offset = 0;
+		}
 	}
 	
 	@Override

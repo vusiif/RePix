@@ -15,8 +15,18 @@ public abstract class BasePicEncryptScramble extends ImageScramble {
 	}
 	
 	protected double[][] generateLogistic(double x1, int n) {
+		if (n <= 0) return new double[0][2];
 		double[][] arr = new double[n][2];
 		double x = x1;
+		if (Double.isNaN(x) || Double.isInfinite(x)) {
+			x = 0.5;
+		} else {
+			x = Math.abs(x);
+			x = x - Math.floor(x);
+			if (x <= 1e-7 || x >= (1.0 - 1e-7)) {
+				x = 0.5;
+			}
+		}
 		arr[0][0] = x;
 		arr[0][1] = 0;
 		for (int i = 1; i < n; ++i) {
@@ -28,7 +38,7 @@ public abstract class BasePicEncryptScramble extends ImageScramble {
 	}
 	
 	protected int[] getSortedPositions(double[][] logistacMap, int positionSize) {
-		Arrays.sort(logistacMap, (a, b) -> a[0] > b[0] ? 1 : -1);
+		Arrays.sort(logistacMap, (a, b) -> Double.compare(a[0], b[0]));
 		int[] positions = new int[positionSize];
 		for (int i = 0; i < positionSize; ++i) {
 			positions[i] = (int) logistacMap[i][1];

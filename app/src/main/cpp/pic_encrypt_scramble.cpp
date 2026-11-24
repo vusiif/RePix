@@ -10,8 +10,21 @@ BasePicEncryptScramble::BasePicEncryptScramble(const int32_t* pixels, int32_t wi
     : pixels_(pixels), width_(width), height_(height), pixel_count_(width * height), key_(key) {}
 
 std::vector<LogisticItem> BasePicEncryptScramble::generate_logistic(double x1, int32_t n) {
+    if (n <= 0) return {};
     std::vector<LogisticItem> arr(n);
+
+    // Sanitize input key to prevent NaN/Inf divergence and std::stable_sort undefined behavior
     double x = x1;
+    if (std::isnan(x) || std::isinf(x)) {
+        x = 0.5;
+    } else {
+        x = std::abs(x);
+        x = x - std::floor(x);
+        if (x <= 1e-7 || x >= (1.0 - 1e-7)) {
+            x = 0.5;
+        }
+    }
+
     arr[0] = {x, 0};
     for (int32_t i = 1; i < n; ++i) {
         x = 3.9999999 * x * (1.0 - x);
